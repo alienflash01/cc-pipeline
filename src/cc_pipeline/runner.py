@@ -1,7 +1,17 @@
-"""Module Runner — executes compiled pipeline steps sequentially for one module."""
+"""Module Runner — executes compiled pipeline steps sequentially for one module.
+
+Implements CO-style layered error handling:
+  1. CC returncode != 0 → immediate failure, skip postcondition
+  2. CC zero-work detection (empty output) → immediate failure
+  3. Rate limit (429) → retry without consuming budget
+  4. Timeout → retry, consumes budget
+  5. CC success → proceed to postcondition
+"""
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 from cc_pipeline.compiler import CompiledStep
@@ -9,6 +19,24 @@ from cc_pipeline.executor import CCExecutor, CCResult, ShellExecutor, ShellResul
 from cc_pipeline.git_checkpoint import GitCheckpoint
 from cc_pipeline.logger import Logger
 from cc_pipeline.postcondition import evaluate as eval_postcondition, PostconditionResult
+
+
+class ExecOutcome(Enum):
+    """Outcome of a single CC/shell execution."""
+    SUCCESS = "success"
+    CC_FAILED = "cc_failed"           # CC returncode != 0
+    ZERO_WORK = "zero_work"            # CC returned nothing useful
+    RATE_LIMITED = "rate_limited"      # 429 — don't consume retry
+    TIMEOUT = "timeout"                # subprocess timeout
+    UNKNOWN_ERROR = "unknown_error"
+
+
+@dataclass
+class ExecResult:
+    """Result of executing one step."""
+    outcome: ExecOutcome
+    cc_result: CCResult | ShellResult | None = None
+    reason: str = ""
 
 
 @dataclass
@@ -21,15 +49,35 @@ class RunnerResult:
     error: str = ""
 
 
+RATE_LIMIT_PATTERNS = ["429", "rate_limit", "rate limit", "too many requests", "1302"]
+
+
+def _is_rate_limited(stderr: str) -> bool:
+    """Check if stderr indicates a rate limit error."""
+    lower = stderr.lower()
+    return any(p in lower for p in RATE_LIMIT_PATTERNS)
+
+
+def _is_zero_work(cc_result: CCResult) -> bool:
+    """Detect CC that exited without producing meaningful output."""
+    return (
+        cc_result.returncode == 0
+        and not cc_result.stdout.strip()
+        and not cc_result.stderr.strip()
+    )
+
+
 class ModuleRunner:
     """Runs a compiled pipeline (list of CompiledSteps) for a single module.
 
     Executes steps sequentially. Each step:
-      1. Run executor (claude-code / shell / judge)
-      2. Evaluate postcondition
-      3. If pass → git checkpoint → next step
-      4. If fail → git rollback → retry (up to step.retry times)
-      5. If retries exhausted → module failed
+      1. Run executor (claude-code / shell / judge) with layered error handling
+      2. If CC failed / zero-work → skip postcondition, go to retry
+      3. If rate-limited → retry without consuming budget
+      4. If CC succeeded → evaluate postcondition
+      5. If pass → git checkpoint → next step
+      6. If fail → git rollback → retry (up to step.retry times)
+      7. If retries exhausted → module failed
     """
 
     def __init__(
@@ -60,49 +108,93 @@ class ModuleRunner:
         completed = 0
 
         for i, step in enumerate(self.steps, 1):
-            step_label = f"{step.step_id}" + (f"[{step.loop_file}]" if step.loop_file else "")
             passed = False
 
-            for attempt in range(1, step.retry + 1):
-                self.logger.event("step_start", step=step.step_id, attempt=attempt,
+            retry_budget = step.retry  # budget that CAN be consumed
+            extra_retries = 0  # rate-limit retries (free, don't consume budget)
+
+            while True:
+                attempt_num = retry_budget - step.retry + extra_retries + 1 if step.retry > 0 else 1
+                current_attempt = step.retry - retry_budget + 1 + extra_retries
+                if current_attempt < 1:
+                    current_attempt = 1
+
+                self.logger.event("step_start", step=step.step_id, attempt=current_attempt,
                                   loop_file=step.loop_file)
 
-                # Execute the step
-                self._execute_step(step)
+                # Execute the step with layered error handling
+                exec_result = self._execute_step(step)
 
-                # Evaluate postcondition
-                pc_result = self._check_postcondition(step)
-
-                if pc_result.passed:
-                    self.logger.log_pass(step=step.step_id, attempt=attempt,
-                                         info={"reason": pc_result.reason})
-                    self.git_checkpoint.checkpoint(
-                        step=step.step_id,
-                        module=self.module_name,
-                        attempt=attempt,
+                # Layer 1: Rate limit → free retry, don't consume budget
+                if exec_result.outcome == ExecOutcome.RATE_LIMITED:
+                    self.logger.log_retry(
+                        step=step.step_id, attempt=current_attempt,
+                        reason=f"Rate limited: {exec_result.reason}",
                     )
-                    completed = i
-                    passed = True
-                    break
-                else:
-                    if attempt < step.retry:
+                    extra_retries += 1
+                    continue  # retry without touching retry_budget
+
+                # Layer 2: CC failed / zero-work / timeout / error → skip postcondition
+                if exec_result.outcome in (ExecOutcome.CC_FAILED, ExecOutcome.ZERO_WORK,
+                                           ExecOutcome.TIMEOUT, ExecOutcome.UNKNOWN_ERROR):
+                    failure_reason = f"{exec_result.outcome.value}: {exec_result.reason}"
+
+                    if retry_budget > 1:
+                        retry_budget -= 1
                         self.logger.log_retry(
-                            step=step.step_id, attempt=attempt,
-                            reason=pc_result.reason,
+                            step=step.step_id, attempt=current_attempt,
+                            reason=failure_reason,
                         )
-                        # Rollback to previous step's checkpoint before retry
                         if i > 1:
                             prev_step = self.steps[i - 2]
                             self.git_checkpoint.rollback(
                                 step=prev_step.step_id,
                                 module=self.module_name,
-                                attempt=1,  # rollback to first attempt of previous step
+                                attempt=1,
                             )
+                        continue
                     else:
                         self.logger.log_fail(
-                            step=step.step_id, attempt=attempt,
+                            step=step.step_id, attempt=current_attempt,
+                            reason=failure_reason,
+                        )
+                        break  # exit while loop, step failed
+
+                # Layer 3: CC succeeded → check postcondition
+                pc_result = self._check_postcondition(step)
+
+                if pc_result.passed:
+                    self.logger.log_pass(step=step.step_id, attempt=current_attempt,
+                                         info={"reason": pc_result.reason})
+                    self.git_checkpoint.checkpoint(
+                        step=step.step_id,
+                        module=self.module_name,
+                        attempt=current_attempt,
+                    )
+                    completed = i
+                    passed = True
+                    break
+                else:
+                    if retry_budget > 1:
+                        retry_budget -= 1
+                        self.logger.log_retry(
+                            step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
+                        if i > 1:
+                            prev_step = self.steps[i - 2]
+                            self.git_checkpoint.rollback(
+                                step=prev_step.step_id,
+                                module=self.module_name,
+                                attempt=1,
+                            )
+                        continue
+                    else:
+                        self.logger.log_fail(
+                            step=step.step_id, attempt=current_attempt,
+                            reason=pc_result.reason,
+                        )
+                        break
 
             if not passed:
                 return {
@@ -120,29 +212,68 @@ class ModuleRunner:
             "steps_total": total,
         }
 
-    def _execute_step(self, step: CompiledStep) -> None:
-        """Execute a step using the appropriate executor."""
-        if step.executor == "shell":
-            self.shell_executor.run(
-                command=step.rendered_prompt,
-                cwd=self.worktree_path,
-            )
-        else:
-            # claude-code and judge both use CC
-            allowed_tools = None
-            if step.executor == "judge":
-                allowed_tools = ["Read", "Bash"]  # judge is read-only
+    def _execute_step(self, step: CompiledStep) -> ExecResult:
+        """Execute a step using the appropriate executor.
 
-            self.cc_executor.run(
+        Returns ExecResult with classified outcome.
+        CO-style layered error handling.
+        """
+        if step.executor == "shell":
+            try:
+                result = self.shell_executor.run(
+                    command=step.rendered_prompt,
+                    cwd=self.worktree_path,
+                )
+                if result.returncode != 0:
+                    if _is_rate_limited(result.stderr):
+                        return ExecResult(ExecOutcome.RATE_LIMITED, result, "Shell rate limited")
+                    return ExecResult(ExecOutcome.CC_FAILED, result, f"exit {result.returncode}")
+                return ExecResult(ExecOutcome.SUCCESS, result)
+            except subprocess.TimeoutExpired:
+                return ExecResult(ExecOutcome.TIMEOUT, reason="Shell timeout")
+            except Exception as e:
+                return ExecResult(ExecOutcome.UNKNOWN_ERROR, reason=str(e))
+
+        # claude-code and judge both use CC
+        allowed_tools = None
+        if step.executor == "judge":
+            allowed_tools = ["Read", "Bash"]  # judge is read-only
+
+        try:
+            cc_result = self.cc_executor.run(
                 prompt=step.rendered_prompt,
                 cwd=self.worktree_path,
                 allowed_tools=allowed_tools,
             )
+        except subprocess.TimeoutExpired:
+            return ExecResult(ExecOutcome.TIMEOUT, reason="CC timeout")
+        except Exception as e:
+            return ExecResult(ExecOutcome.UNKNOWN_ERROR, reason=str(e))
+
+        # Layer 1: Rate limit detection (don't consume retry budget)
+        if _is_rate_limited(cc_result.stderr):
+            return ExecResult(ExecOutcome.RATE_LIMITED, cc_result, "API rate limited")
+
+        # Layer 2: CC non-zero exit → immediate failure
+        if cc_result.returncode != 0:
+            return ExecResult(
+                ExecOutcome.CC_FAILED, cc_result,
+                f"CC exit {cc_result.returncode}: {cc_result.stderr[:120]}",
+            )
+
+        # Layer 3: Zero-work detection
+        if _is_zero_work(cc_result):
+            return ExecResult(
+                ExecOutcome.ZERO_WORK, cc_result,
+                "CC produced no output — likely did no work",
+            )
+
+        # Success
+        return ExecResult(ExecOutcome.SUCCESS, cc_result)
 
     def _check_postcondition(self, step: CompiledStep) -> PostconditionResult:
         """Evaluate a step's postcondition."""
         if step.postcondition is None:
-            # No postcondition = always pass
             return PostconditionResult(passed=True, reason="No postcondition")
 
         shell = step.postcondition.get("shell", "true")

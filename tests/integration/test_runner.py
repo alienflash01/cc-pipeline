@@ -116,7 +116,7 @@ class TestModuleRunner:
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("math")
 
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="done", stderr="")
         runner = ModuleRunner(
             steps=steps,
             module_name="math",
@@ -141,7 +141,7 @@ class TestModuleRunner:
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("math")
 
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="done", stderr="")
         runner = ModuleRunner(
             steps=steps,
             module_name="math",
@@ -177,7 +177,7 @@ class TestModuleRunner:
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("math")
 
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="done", stderr="")
         runner = ModuleRunner(
             steps=steps,
             module_name="math",
@@ -230,7 +230,7 @@ class TestModuleRunner:
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("math")
 
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_subproc.return_value = MagicMock(returncode=0, stdout="done", stderr="")
         runner = ModuleRunner(
             steps=steps,
             module_name="math",
