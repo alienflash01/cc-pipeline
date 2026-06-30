@@ -68,3 +68,49 @@ class CCExecutor:
             stdout=result.stdout,
             stderr=result.stderr,
         )
+
+
+@dataclass
+class ShellResult:
+    """Result of a deterministic shell command execution."""
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+class ShellExecutor:
+    """Wraps deterministic shell command execution (trusted layer)."""
+
+    def __init__(self, default_timeout: int = 300):
+        self.default_timeout = default_timeout
+
+    def run(
+        self,
+        command: str,
+        cwd: str,
+        timeout: int | None = None,
+    ) -> ShellResult:
+        """Run a shell command deterministically.
+
+        Args:
+            command: Shell command string.
+            cwd: Working directory.
+            timeout: Timeout in seconds.
+
+        Returns:
+            ShellResult with stdout, stderr, return code.
+        """
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout or self.default_timeout,
+        )
+
+        return ShellResult(
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )

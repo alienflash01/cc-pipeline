@@ -1,0 +1,153 @@
+"""Postcondition Evaluator — shell + expect expression evaluation."""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from dataclasses import dataclass
+
+
+@dataclass
+class PostconditionResult:
+    """Result of a postcondition evaluation."""
+    passed: bool
+    stdout: str = ""
+    stderr: str = ""
+    reason: str = ""
+
+
+def evaluate(
+    shell: str,
+    expect: str | None,
+    cwd: str,
+    timeout: int = 300,
+) -> PostconditionResult:
+    """Evaluate a postcondition by running a shell command and checking expect.
+
+    Args:
+        shell: Shell command to run. stdout should be JSON (if expect uses $.).
+        expect: Expression to evaluate against JSON output, or None.
+        cwd: Working directory for the command.
+        timeout: Timeout in seconds.
+
+    Returns:
+        PostconditionResult with passed=True if conditions are met.
+    """
+    result = subprocess.run(
+        shell,
+        shell=True,
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+
+    # Shell failed → postcondition fails
+    if result.returncode != 0:
+        return PostconditionResult(
+            passed=False,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            reason=f"Shell command exited with code {result.returncode}",
+        )
+
+    # No expect → pass (shell exited 0)
+    if expect is None:
+        return PostconditionResult(
+            passed=True,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+
+    # Parse expect expression
+    return _evaluate_expect(expect, result.stdout, result.stderr)
+
+
+def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResult:
+    """Evaluate an expect expression against stdout."""
+    expect = expect.strip()
+
+    # contains('text') — check if stdout contains literal text
+    contains_match = re.match(r"contains\(['\"](.+?)['\"]\)", expect)
+    if contains_match:
+        text = contains_match.group(1)
+        passed = text in stdout
+        return PostconditionResult(
+            passed=passed,
+            stdout=stdout,
+            stderr=stderr,
+            reason=f"contains('{text}'): {'found' if passed else 'not found'}",
+        )
+
+    # JSON path comparisons: $.field >= value, $.field == value, etc.
+    # Try to parse stdout as JSON
+    try:
+        data = json.loads(stdout)
+    except json.JSONDecodeError:
+        return PostconditionResult(
+            passed=False,
+            stdout=stdout,
+            stderr=stderr,
+            reason="stdout is not valid JSON",
+        )
+
+    # Split by && for AND expressions
+    conditions = [c.strip() for c in expect.split("&&")]
+
+    for cond in conditions:
+        if not _evaluate_single(cond, data):
+            return PostconditionResult(
+                passed=False,
+                stdout=stdout,
+                stderr=stderr,
+                reason=f"Condition failed: {cond}",
+            )
+
+    return PostconditionResult(
+        passed=True,
+        stdout=stdout,
+        stderr=stderr,
+        reason="All conditions passed",
+    )
+
+
+def _evaluate_single(cond: str, data: dict) -> bool:
+    """Evaluate a single comparison condition like $.line >= 80."""
+    # Match: $.field OP value
+    match = re.match(r"\$\.(\w+)\s*(>=|<=|==|!=|>|<)\s*(.+)", cond.strip())
+    if not match:
+        return False
+
+    field_name = match.group(1)
+    operator = match.group(2)
+    raw_value = match.group(3).strip()
+
+    # Get field value from data
+    if field_name not in data:
+        return False
+    actual = data[field_name]
+
+    # Parse expected value (int or float or string)
+    try:
+        expected = int(raw_value)
+    except ValueError:
+        try:
+            expected = float(raw_value)
+        except ValueError:
+            expected = raw_value.strip("'\"")
+
+    # Compare
+    if operator == ">=":
+        return actual >= expected
+    elif operator == "<=":
+        return actual <= expected
+    elif operator == "==":
+        return actual == expected
+    elif operator == "!=":
+        return actual != expected
+    elif operator == ">":
+        return actual > expected
+    elif operator == "<":
+        return actual < expected
+
+    return False
