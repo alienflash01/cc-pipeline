@@ -6,3 +6,5 @@ __pycache__/
 .pipeline/
 *.log
 .claude-overnight/
+.coverage
+.pytest_cache/
