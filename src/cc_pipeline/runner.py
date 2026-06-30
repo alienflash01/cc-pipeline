@@ -13,6 +13,7 @@ import subprocess
 import time as _time_mod
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from cc_pipeline.compiler import CompiledStep
@@ -228,16 +229,56 @@ class ModuleRunner:
             "steps_total": total,
         }
 
+    def _ensure_pipeline_dir(self) -> Path:
+        """Ensure .pipeline/ directory exists in worktree."""
+        pd = Path(self.worktree_path) / ".pipeline"
+        pd.mkdir(parents=True, exist_ok=True)
+        return pd
+
+    def _inject_context(self, prompt: str, step: CompiledStep) -> str:
+        """Inject prior step outputs + output write instruction into prompt."""
+        pipeline_dir = Path(self.worktree_path) / ".pipeline"
+
+        # Inject prior step outputs if they exist
+        if pipeline_dir.exists():
+            prior_files = sorted(pipeline_dir.glob("*.json"))
+            if prior_files:
+                context_lines = ["\n\n--- 前序步骤的上下文 ---"]
+                for f in prior_files:
+                    try:
+                        content = f.read_text().strip()
+                        if content:
+                            context_lines.append(f"[{f.name}]:\n{content}")
+                    except Exception:
+                        pass
+                context_lines.append("---\n")
+                prompt += "\n".join(context_lines)
+
+        # Inject output write instruction
+        if step.output:
+            prompt += (
+                f"\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
+                f"以 JSON 格式写入 .pipeline/{step.output}"
+            )
+
+        return prompt
+
     def _execute_step(self, step: CompiledStep) -> ExecResult:
         """Execute a step using the appropriate executor.
 
         Returns ExecResult with classified outcome.
         CO-style layered error handling.
         """
+        # Ensure .pipeline/ exists for context passing
+        self._ensure_pipeline_dir()
+
+        # Inject context + output instruction
+        full_prompt = self._inject_context(step.rendered_prompt, step)
+
         if step.executor == "shell":
             try:
                 result = self.shell_executor.run(
-                    command=step.rendered_prompt,
+                    command=full_prompt,
                     cwd=self.worktree_path,
                 )
                 if result.returncode != 0:
@@ -257,7 +298,7 @@ class ModuleRunner:
 
         try:
             cc_result = self.cc_executor.run(
-                prompt=step.rendered_prompt,
+                prompt=full_prompt,
                 cwd=self.worktree_path,
                 allowed_tools=allowed_tools,
             )
