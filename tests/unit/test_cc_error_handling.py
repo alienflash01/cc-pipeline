@@ -118,8 +118,9 @@ class TestCCZeroWorkDetection:
 class TestRateLimitHandling:
     """Rate limit errors should not consume retry budget."""
 
+    @patch("cc_pipeline.runner._time_mod.sleep")
     @patch("cc_pipeline.executor.subprocess.run")
-    def test_rate_limit_does_not_consume_retry(self, mock_run):
+    def test_rate_limit_does_not_consume_retry(self, mock_run, mock_sleep):
         """429 error → retry without consuming budget."""
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep

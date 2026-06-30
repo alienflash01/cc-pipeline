@@ -3,13 +3,14 @@
 Implements CO-style layered error handling:
   1. CC returncode != 0 → immediate failure, skip postcondition
   2. CC zero-work detection (empty output) → immediate failure
-  3. Rate limit (429) → retry without consuming budget
+  3. Rate limit (429) → retry without consuming budget (with backoff + max limit)
   4. Timeout → retry, consumes budget
   5. CC success → proceed to postcondition
 """
 from __future__ import annotations
 
 import subprocess
+import time as _time_mod
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
@@ -29,6 +30,11 @@ class ExecOutcome(Enum):
     RATE_LIMITED = "rate_limited"      # 429 — don't consume retry
     TIMEOUT = "timeout"                # subprocess timeout
     UNKNOWN_ERROR = "unknown_error"
+
+
+# CO-style rate limit protection
+MAX_FREE_RATE_LIMIT_RETRIES = 5   # max free retries before consuming budget
+RATE_LIMIT_BACKOFF_SECS = 60      # wait between rate-limit retries (CO default: 120)
 
 
 @dataclass
@@ -125,14 +131,26 @@ class ModuleRunner:
                 # Execute the step with layered error handling
                 exec_result = self._execute_step(step)
 
-                # Layer 1: Rate limit → free retry, don't consume budget
+                # Layer 1: Rate limit → free retry with backoff, limited count
                 if exec_result.outcome == ExecOutcome.RATE_LIMITED:
-                    self.logger.log_retry(
-                        step=step.step_id, attempt=current_attempt,
-                        reason=f"Rate limited: {exec_result.reason}",
-                    )
-                    extra_retries += 1
-                    continue  # retry without touching retry_budget
+                    if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
+                        self.logger.log_retry(
+                            step=step.step_id, attempt=current_attempt,
+                            reason=f"Rate limited (free retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES}): {exec_result.reason}",
+                        )
+                        _time_mod.sleep(RATE_LIMIT_BACKOFF_SECS)
+                        extra_retries += 1
+                        continue  # retry without touching retry_budget
+                    else:
+                        # Free retries exhausted — treat as CC failure, consume budget
+                        self.logger.log_retry(
+                            step=step.step_id, attempt=current_attempt,
+                            reason=f"Rate limit free retries exhausted, consuming budget",
+                        )
+                        exec_result = ExecResult(
+                            ExecOutcome.CC_FAILED,
+                            reason=f"Rate limit persisted after {MAX_FREE_RATE_LIMIT_RETRIES} free retries",
+                        )
 
                 # Layer 2: CC failed / zero-work / timeout / error → skip postcondition
                 if exec_result.outcome in (ExecOutcome.CC_FAILED, ExecOutcome.ZERO_WORK,
