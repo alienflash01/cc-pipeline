@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 
@@ -21,6 +22,7 @@ class WorktreeManager:
         self.worktree_root = Path(worktree_root) if worktree_root else Path(tempfile.gettempdir()) / "cc-pipeline-worktrees"
         self.worktree_root.mkdir(parents=True, exist_ok=True)
         self.branch_prefix = branch_prefix
+        self._lock = threading.Lock()  # serialize git worktree operations
         self._worktrees: dict[str, str] = {}  # module_name → path
 
     def create(self, module_name: str) -> str:
@@ -35,18 +37,25 @@ class WorktreeManager:
         branch = f"{self.branch_prefix}/{module_name}"
         wt_path = self.worktree_root / module_name
 
-        # Remove if exists
-        if wt_path.exists():
+        with self._lock:
+            # Remove if exists
+            if wt_path.exists():
+                subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(wt_path)],
+                    cwd=self.repo_path, capture_output=True,
+                )
+
+            # Delete old branch if exists
             subprocess.run(
-                ["git", "worktree", "remove", "--force", str(wt_path)],
+                ["git", "branch", "-D", branch],
                 cwd=self.repo_path, capture_output=True,
             )
 
-        # Create worktree with a new branch from base
-        subprocess.run(
-            ["git", "worktree", "add", "-b", branch, str(wt_path), self.base_branch],
-            cwd=self.repo_path, capture_output=True, check=True,
-        )
+            # Create worktree with a new branch from base
+            subprocess.run(
+                ["git", "worktree", "add", "-b", branch, str(wt_path), self.base_branch],
+                cwd=self.repo_path, capture_output=True, check=True,
+            )
 
         self._worktrees[module_name] = str(wt_path)
         return str(wt_path)
@@ -57,17 +66,18 @@ class WorktreeManager:
         if wt_path is None:
             return
 
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", wt_path],
-            cwd=self.repo_path, capture_output=True,
-        )
+        with self._lock:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", wt_path],
+                cwd=self.repo_path, capture_output=True,
+            )
 
-        # Also delete the branch
-        branch = f"{self.branch_prefix}/{module_name}"
-        subprocess.run(
-            ["git", "branch", "-D", branch],
-            cwd=self.repo_path, capture_output=True,
-        )
+            # Also delete the branch
+            branch = f"{self.branch_prefix}/{module_name}"
+            subprocess.run(
+                ["git", "branch", "-D", branch],
+                cwd=self.repo_path, capture_output=True,
+            )
 
         self._worktrees.pop(module_name, None)
 

@@ -34,6 +34,10 @@ class Orchestrator:
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.concurrency = config.concurrency
+        self.run_id = "unknown"  # set by CLI
+        # Default worktree root under run_dir to avoid cross-test conflicts
+        if worktree_root is None:
+            worktree_root = str(self.run_dir / "worktrees")
         self.worktree_mgr = WorktreeManager(
             repo_path=config.repo,
             base_branch=config.base_branch,
@@ -42,6 +46,10 @@ class Orchestrator:
         )
         self.compiler = PipelineCompiler(config)
         self.cc_model = cc_model
+
+        # Shared state manager (thread-safe)
+        from cc_pipeline.state import StateManager
+        self.state_mgr = StateManager(run_dir=str(self.run_dir))
 
     def run(self) -> list[dict]:
         """Run all modules in parallel.
@@ -73,8 +81,23 @@ class Orchestrator:
 
     def _run_module(self, module_name: str) -> dict:
         """Run a single module's pipeline in its own worktree."""
+        from cc_pipeline.pr import PRCreator
+
+        # Use shared state manager
+        state = self.state_mgr
+
         # Create worktree
         wt_path = self.worktree_mgr.create(module_name)
+
+        # Find the module config
+        module = next(m for m in self.config.modules if m.name == module_name)
+        branch = f"{self.config.output_branch_prefix}/{module_name}"
+
+        # Save initial state
+        state.save(
+            run_id=getattr(self, "run_id", "unknown"),
+            modules={module_name: {"status": "running", "worktree": wt_path, "branch": branch}},
+        )
 
         # Compile steps for this module
         steps = self.compiler.compile_module(module_name)
@@ -92,8 +115,31 @@ class Orchestrator:
         # Run pipeline
         result = runner.run()
 
-        # Cleanup or preserve based on result
+        # Update state
+        state.update_module(
+            module_name,
+            status=result["status"],
+            steps_completed=result.get("steps_completed", 0),
+            steps_total=result.get("steps_total", 0),
+        )
+
+        # On success: merge + PR + cleanup
         if result["status"] == "passed":
+            # Create PR if we have gh available
+            try:
+                pr_creator = PRCreator(repo_path=str(self.worktree_mgr.repo_path))
+                pr_url = pr_creator.create(
+                    branch=branch,
+                    title=f"UT for {module_name}",
+                    body=f"Auto-generated tests for {module_name} (spec: {module.spec_id})",
+                    labels=["auto-generated", "ut"],
+                )
+                if pr_url:
+                    state.update_module(module_name, pr_url=pr_url)
+                    result["pr_url"] = pr_url
+            except Exception:
+                pass  # PR creation is best-effort
+
             self.worktree_mgr.cleanup(module_name)
         else:
             self.worktree_mgr.preserve(module_name)

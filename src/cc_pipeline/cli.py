@@ -86,6 +86,7 @@ def _cmd_run(args) -> int:
         run_dir=run_dir,
         cc_model=args.model,
     )
+    orch.run_id = run_id
     results = orch.run()
 
     # Print summary

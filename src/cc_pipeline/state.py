@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,6 +14,7 @@ class StateManager:
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.state_file = self.run_dir / "orchestrator-state.json"
+        self._lock = threading.Lock()
 
     def save(self, run_id: str, modules: dict) -> None:
         """Save full orchestrator state.
@@ -21,13 +23,14 @@ class StateManager:
             run_id: Unique run identifier.
             modules: Dict of module_name → module state.
         """
-        state = {
-            "run_id": run_id,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-            "modules": modules,
-        }
-        with open(self.state_file, "w") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        with self._lock:
+            state = {
+                "run_id": run_id,
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "modules": modules,
+            }
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
 
     def load(self) -> dict | None:
         """Load previously saved state.
@@ -35,10 +38,11 @@ class StateManager:
         Returns:
             State dict, or None if no state file exists.
         """
-        if not self.state_file.exists():
-            return None
-        with open(self.state_file) as f:
-            return json.load(f)
+        with self._lock:
+            if not self.state_file.exists():
+                return None
+            with open(self.state_file) as f:
+                return json.load(f)
 
     def update_module(self, module_name: str, **kwargs) -> None:
         """Update a single module's state fields.
@@ -47,15 +51,19 @@ class StateManager:
             module_name: Module to update.
             **kwargs: Fields to update (status, current_step, etc.).
         """
-        state = self.load()
-        if state is None:
-            state = {"run_id": "unknown", "saved_at": "", "modules": {}}
-        if module_name not in state["modules"]:
-            state["modules"][module_name] = {}
-        state["modules"][module_name].update(kwargs)
-        state["saved_at"] = datetime.now(timezone.utc).isoformat()
-        with open(self.state_file, "w") as f:
-            json.dump(state, f, indent=2, ensure_ascii=False)
+        with self._lock:
+            state = None
+            if self.state_file.exists():
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            if state is None:
+                state = {"run_id": "unknown", "saved_at": "", "modules": {}}
+            if module_name not in state["modules"]:
+                state["modules"][module_name] = {}
+            state["modules"][module_name].update(kwargs)
+            state["saved_at"] = datetime.now(timezone.utc).isoformat()
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
 
     def get_failed_modules(self) -> list[str]:
         """Return list of module names that failed.
