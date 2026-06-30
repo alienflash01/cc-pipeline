@@ -165,10 +165,9 @@ class ModuleRunner:
                         )
                         if i > 1:
                             prev_step = self.steps[i - 2]
-                            self.git_checkpoint.rollback(
+                            self.git_checkpoint.rollback_to_latest(
                                 step=prev_step.step_id,
                                 module=self.module_name,
-                                attempt=1,
                             )
                         continue
                     else:
@@ -201,10 +200,9 @@ class ModuleRunner:
                         )
                         if i > 1:
                             prev_step = self.steps[i - 2]
-                            self.git_checkpoint.rollback(
+                            self.git_checkpoint.rollback_to_latest(
                                 step=prev_step.step_id,
                                 module=self.module_name,
-                                attempt=1,
                             )
                         continue
                     else:

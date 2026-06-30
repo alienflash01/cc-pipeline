@@ -248,7 +248,7 @@ class TestModuleRunner:
             return PostconditionResult(passed=True, reason="ok")
         runner._check_postcondition = flaky_check
 
-        with patch.object(runner.git_checkpoint, "rollback") as mock_rb:
+        with patch.object(runner.git_checkpoint, "rollback_to_latest") as mock_rb:
             runner.run()
             assert mock_rb.call_count >= 1  # at least one rollback for retry
 
