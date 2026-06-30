@@ -176,6 +176,7 @@ Week 5-6   Phase 4 (生产化)
 
 | 项目 | 描述 | 优先级 |
 |------|------|--------|
+| **魔改 claude-overnight** | Fork co，给 wave-loop 加 pipeline 类型支持（per-module worktree、串行 dispatch、步骤间状态传递），作为 cc-pipeline 的备选执行后端 | 高 |
 | 技能自进化 | 接入 Librarian + A/B 测试（借鉴 claude-overnight） | 中 |
 | 多模型混用 | 按步骤指定不同模型（Opus 规划 + GLM 执行） | 中 |
 | Web UI | 实时监控 pipeline 状态 | 低 |
