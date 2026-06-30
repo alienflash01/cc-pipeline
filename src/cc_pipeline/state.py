@@ -65,6 +65,20 @@ class StateManager:
             with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2, ensure_ascii=False)
 
+    def set_run_id(self, run_id: str) -> None:
+        """Set run_id in state file (idempotent, thread-safe)."""
+        with self._lock:
+            state = None
+            if self.state_file.exists():
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            if state is None:
+                state = {"run_id": run_id, "saved_at": "", "modules": {}}
+            state["run_id"] = run_id
+            state["saved_at"] = datetime.now(timezone.utc).isoformat()
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+
     def get_failed_modules(self) -> list[str]:
         """Return list of module names that failed.
 

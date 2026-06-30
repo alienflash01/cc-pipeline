@@ -93,11 +93,13 @@ class Orchestrator:
         module = next(m for m in self.config.modules if m.name == module_name)
         branch = f"{self.config.output_branch_prefix}/{module_name}"
 
-        # Save initial state
-        state.save(
-            run_id=getattr(self, "run_id", "unknown"),
-            modules={module_name: {"status": "running", "worktree": wt_path, "branch": branch}},
+        # Save initial state (use update_module, not save, to avoid overwriting other modules)
+        state.update_module(
+            module_name,
+            status="running", worktree=wt_path, branch=branch,
         )
+        # Ensure run_id is set (only once, by first thread — but update_module is idempotent)
+        state.set_run_id(getattr(self, "run_id", "unknown"))
 
         # Compile steps for this module
         steps = self.compiler.compile_module(module_name)
