@@ -272,8 +272,12 @@ class ModuleRunner:
         # Ensure .pipeline/ exists for context passing
         self._ensure_pipeline_dir()
 
-        # Inject context + output instruction
-        full_prompt = self._inject_context(step.rendered_prompt, step)
+        # Shell executor: use raw prompt as-is (it IS the shell command)
+        if step.executor == "shell":
+            full_prompt = step.rendered_prompt
+        else:
+            # CC/judge: inject prior context + output instruction
+            full_prompt = self._inject_context(step.rendered_prompt, step)
 
         if step.executor == "shell":
             try:
