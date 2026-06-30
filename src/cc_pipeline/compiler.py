@@ -1,0 +1,147 @@
+"""Pipeline Compiler — convert YAML pipeline + module into executable CompiledSteps."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from cc_pipeline.config import PipelineConfig, PipelineStep, Module
+from cc_pipeline.render import render
+
+VALID_EXECUTORS = {"claude-code", "shell", "judge"}
+
+
+@dataclass
+class CompiledStep:
+    """A single executable step, with variables resolved."""
+    step_id: str
+    executor: str
+    rendered_prompt: str
+    postcondition: dict | None = None
+    retry: int = 3
+    rollback: str = "git-checkpoint"
+    output: str | None = None
+    depends_on: str | None = None
+    loop_file: str | None = None  # set when this is a loop expansion
+
+
+class PipelineCompiler:
+    """Compiles a PipelineConfig + module name into a list of CompiledSteps."""
+
+    def __init__(self, config: PipelineConfig):
+        self.config = config
+
+    def compile_module(self, module_name: str) -> list[CompiledStep]:
+        """Compile the pipeline for a specific module.
+
+        Args:
+            module_name: Name of the module to compile for.
+
+        Returns:
+            Ordered list of CompiledSteps.
+
+        Raises:
+            ValueError: If module not found, duplicate step IDs, or invalid executor.
+        """
+        # Find module
+        module = None
+        for m in self.config.modules:
+            if m.name == module_name:
+                module = m
+                break
+        if module is None:
+            raise ValueError(f"Module not found: {module_name}")
+
+        # Validate step IDs are unique
+        seen_ids = set()
+        for step in self.config.pipeline:
+            if step.id in seen_ids:
+                raise ValueError(f"Duplicate step ID: {step.id}")
+            seen_ids.add(step.id)
+
+        # Validate executors
+        for step in self.config.pipeline:
+            if step.executor not in VALID_EXECUTORS:
+                raise ValueError(
+                    f"Invalid executor '{step.executor}' in step '{step.id}'. "
+                    f"Must be one of: {VALID_EXECUTORS}"
+                )
+
+        # Build base variables for this module
+        base_vars = {
+            "module": module.name,
+            "source_dir": module.source_dir,
+            "spec_id": module.spec_id,
+            **module.variables,
+            **module.coverage,
+        }
+
+        # Compile steps
+        compiled: list[CompiledStep] = []
+        for step in self.config.pipeline:
+            retry = step.retry if step.retry is not None else self.config.max_retries
+
+            if step.loop == "per_file" and module.source_files:
+                for filename in module.source_files:
+                    vars_with_file = {**base_vars, "file": filename}
+                    compiled.append(CompiledStep(
+                        step_id=step.id,
+                        executor=step.executor,
+                        rendered_prompt=render(step.prompt, vars_with_file),
+                        postcondition=self._render_postcondition(step, vars_with_file),
+                        retry=retry,
+                        rollback=step.rollback,
+                        output=step.output,
+                        depends_on=step.depends_on,
+                        loop_file=filename,
+                    ))
+            else:
+                compiled.append(CompiledStep(
+                    step_id=step.id,
+                    executor=step.executor,
+                    rendered_prompt=render(step.prompt, base_vars),
+                    postcondition=self._render_postcondition(step, base_vars),
+                    retry=retry,
+                    rollback=step.rollback,
+                    output=step.output,
+                    depends_on=step.depends_on,
+                ))
+
+        # Sort by depends_on (topological-ish)
+        compiled = self._sort_by_dependencies(compiled)
+
+        return compiled
+
+    def _render_postcondition(self, step: PipelineStep, variables: dict) -> dict | None:
+        """Render variables inside postcondition shell command."""
+        if step.postcondition is None:
+            return None
+        result = dict(step.postcondition)
+        if "shell" in result:
+            result["shell"] = render(result["shell"], variables)
+        if "expect" in result:
+            result["expect"] = render(result["expect"], variables)
+        return result
+
+    def _sort_by_dependencies(self, steps: list[CompiledStep]) -> list[CompiledStep]:
+        """Reorder steps so that depends_on targets come first."""
+        # Build a simple stable sort: steps without depends_on first, then
+        # steps whose depends_on has already appeared.
+        result: list[CompiledStep] = []
+        remaining = list(steps)
+        placed_ids: set[str] = set()
+
+        while remaining:
+            progressed = False
+            for i, step in enumerate(remaining):
+                if step.depends_on is None or step.depends_on in placed_ids:
+                    result.append(step)
+                    placed_ids.add(step.step_id)
+                    remaining.pop(i)
+                    progressed = True
+                    break
+            if not progressed:
+                # Circular or unresolvable dependency — append as-is
+                result.extend(remaining)
+                break
+
+        return result
