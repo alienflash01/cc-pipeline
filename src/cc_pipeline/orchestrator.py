@@ -80,70 +80,100 @@ class Orchestrator:
         return results
 
     def _run_module(self, module_name: str) -> dict:
-        """Run a single module's pipeline in its own worktree."""
+        """Run a single module's pipeline in its own worktree.
+
+        Full exception handling:
+          - Logs exceptions with traceback to transcript
+          - Preserves worktree on mid-pipeline failure
+          - Updates state to "error" on exception
+          - No silent swallowing
+        """
+        import traceback as tb_module
+        from cc_pipeline.logger import Logger
+
         from cc_pipeline.pr import PRCreator
 
         # Use shared state manager
         state = self.state_mgr
+        # Module-level logger (created early so exceptions are logged)
+        logger = Logger(run_dir=str(self.run_dir), module_name=module_name)
 
-        # Create worktree
-        wt_path = self.worktree_mgr.create(module_name)
+        wt_path = None
+        try:
+            # Create worktree
+            wt_path = self.worktree_mgr.create(module_name)
 
-        # Find the module config
-        module = next(m for m in self.config.modules if m.name == module_name)
-        branch = f"{self.config.output_branch_prefix}/{module_name}"
+            # Find the module config
+            module = next(m for m in self.config.modules if m.name == module_name)
+            branch = f"{self.config.output_branch_prefix}/{module_name}"
 
-        # Save initial state (use update_module, not save, to avoid overwriting other modules)
-        state.update_module(
-            module_name,
-            status="running", worktree=wt_path, branch=branch,
-        )
-        # Ensure run_id is set (only once, by first thread — but update_module is idempotent)
-        state.set_run_id(getattr(self, "run_id", "unknown"))
+            # Save initial state
+            state.update_module(
+                module_name,
+                status="running", worktree=wt_path, branch=branch,
+            )
+            state.set_run_id(getattr(self, "run_id", "unknown"))
 
-        # Compile steps for this module
-        steps = self.compiler.compile_module(module_name)
+            # Compile steps
+            steps = self.compiler.compile_module(module_name)
 
-        # Create runner
-        runner = ModuleRunner(
-            steps=steps,
-            module_name=module_name,
-            worktree_path=wt_path,
-            run_dir=str(self.run_dir),
-            cc_executor=CCExecutor(model=self.cc_model),
-            shell_executor=ShellExecutor(),
-        )
+            # Create runner
+            runner = ModuleRunner(
+                steps=steps,
+                module_name=module_name,
+                worktree_path=wt_path,
+                run_dir=str(self.run_dir),
+                cc_executor=CCExecutor(model=self.cc_model),
+                shell_executor=ShellExecutor(),
+            )
 
-        # Run pipeline
-        result = runner.run()
+            # Run pipeline
+            result = runner.run()
 
-        # Update state
-        state.update_module(
-            module_name,
-            status=result["status"],
-            steps_completed=result.get("steps_completed", 0),
-            steps_total=result.get("steps_total", 0),
-        )
+            # Update state
+            state.update_module(
+                module_name,
+                status=result["status"],
+                steps_completed=result.get("steps_completed", 0),
+                steps_total=result.get("steps_total", 0),
+            )
 
-        # On success: merge + PR + cleanup
-        if result["status"] == "passed":
-            # Create PR if we have gh available
-            try:
-                pr_creator = PRCreator(repo_path=str(self.worktree_mgr.repo_path))
-                pr_url = pr_creator.create(
-                    branch=branch,
-                    title=f"UT for {module_name}",
-                    body=f"Auto-generated tests for {module_name} (spec: {module.spec_id})",
-                    labels=["auto-generated", "ut"],
-                )
-                if pr_url:
-                    state.update_module(module_name, pr_url=pr_url)
-                    result["pr_url"] = pr_url
-            except Exception:
-                pass  # PR creation is best-effort
+            # On success: merge + PR + cleanup
+            if result["status"] == "passed":
+                try:
+                    pr_creator = PRCreator(repo_path=str(self.worktree_mgr.repo_path))
+                    pr_url = pr_creator.create(
+                        branch=branch,
+                        title=f"UT for {module_name}",
+                        body=f"Auto-generated tests for {module_name} (spec: {module.spec_id})",
+                        labels=["auto-generated", "ut"],
+                    )
+                    if pr_url:
+                        state.update_module(module_name, pr_url=pr_url)
+                        result["pr_url"] = pr_url
+                except Exception:
+                    pass  # PR creation is best-effort
 
-            self.worktree_mgr.cleanup(module_name)
-        else:
-            self.worktree_mgr.preserve(module_name)
+                self.worktree_mgr.cleanup(module_name)
+            else:
+                self.worktree_mgr.preserve(module_name)
 
-        return result
+            return result
+
+        except Exception as e:
+            # Log full traceback to transcript
+            tb_str = tb_module.format_exc()
+            logger.event("module_exception", error=str(e), traceback=tb_str)
+
+            # Update state to error
+            state.update_module(module_name, status="error", error=str(e))
+
+            # Preserve worktree if it was created (for debugging)
+            if wt_path:
+                self.worktree_mgr.preserve(module_name)
+
+            return {
+                "status": "failed",
+                "module": module_name,
+                "error": str(e),
+            }
