@@ -136,18 +136,21 @@ def _evaluate_single(cond: str, data: dict) -> bool:
         except ValueError:
             expected = raw_value.strip("'\"")
 
-    # Compare
-    if operator == ">=":
-        return actual >= expected
-    elif operator == "<=":
-        return actual <= expected
-    elif operator == "==":
-        return actual == expected
-    elif operator == "!=":
-        return actual != expected
-    elif operator == ">":
-        return actual > expected
-    elif operator == "<":
-        return actual < expected
+    # Compare — guard against type mismatch (None, mixed types)
+    try:
+        if operator == ">=":
+            return actual >= expected
+        elif operator == "<=":
+            return actual <= expected
+        elif operator == "==":
+            return actual == expected
+        elif operator == "!=":
+            return actual != expected
+        elif operator == ">":
+            return actual > expected
+        elif operator == "<":
+            return actual < expected
+    except TypeError:
+        return False
 
     return False
