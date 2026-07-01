@@ -83,8 +83,14 @@ class TestCLIStatus:
 class TestCLIResume:
     """Test cc-pipeline resume command."""
 
-    def test_resume_returns_zero(self):
-        """resume command returns 0 (placeholder, not yet implemented)."""
+    def test_resume_all_passed_returns_zero(self, tmp_path):
+        """resume when all modules passed → exit 0, nothing to do."""
         from cc_pipeline.cli import main
-        ret = main(["resume", "--run-id", "test-run"])
+        run_dir = tmp_path / "runs"
+        run_dir.mkdir()
+        state = {"run_id": "r", "modules": {"m": {"status": "passed"}}}
+        (run_dir / "orchestrator-state.json").write_text(json.dumps(state))
+        config = tmp_path / "config.yaml"
+        config.write_text("repo: /tmp\nbase_branch: main\npipeline:\n  - id: x\n    executor: shell\n    prompt: echo ok\nmodules:\n  - name: m\n    spec_id: S\n    source_dir: src/\n    source_files: [a.c]\n    coverage: {line_threshold: 80, branch_threshold: 70}\n")
+        ret = main(["resume", str(config), "--run-dir", str(run_dir)])
         assert ret == 0

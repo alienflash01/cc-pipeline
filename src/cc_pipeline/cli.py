@@ -27,7 +27,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # resume subcommand
     resume_parser = subparsers.add_parser("resume", help="Resume an interrupted run")
-    resume_parser.add_argument("--run-id", required=True, help="Run ID to resume")
+    resume_parser.add_argument("config", help="Config YAML file path")
+    resume_parser.add_argument("--run-dir", required=True, help="Run directory from previous run")
+    resume_parser.add_argument("--concurrency", type=int, default=None, help="Module parallelism")
+    resume_parser.add_argument("--model", default="glm-4.6", help="Claude model to use")
 
     # status subcommand
     status_parser = subparsers.add_parser("status", help="Show pipeline status")
@@ -103,10 +106,64 @@ def _cmd_run(args) -> int:
 
 
 def _cmd_resume(args) -> int:
-    """Resume an interrupted run."""
-    print(f"[TODO] resume run {args.run_id}")
-    print("  Not yet implemented. Use 'cc-pipeline run' to start fresh.")
-    return 0
+    """Resume an interrupted run — skip passed modules, re-run failed/error."""
+    import json as _json
+    from cc_pipeline.config import load_config
+    from cc_pipeline.orchestrator import Orchestrator
+
+    run_dir = Path(args.run_dir)
+    state_file = run_dir / "orchestrator-state.json"
+
+    # Load config
+    config = load_config(args.config)
+    if args.concurrency is not None:
+        config.concurrency = args.concurrency
+
+    # Read previous state
+    passed_modules = set()
+    if state_file.exists():
+        state = _json.loads(state_file.read_text())
+        for mod_name, mod_state in state.get("modules", {}).items():
+            if mod_state.get("status") == "passed":
+                passed_modules.add(mod_name)
+
+    # Determine which modules to run
+    modules_to_run = [m.name for m in config.modules if m.name not in passed_modules]
+
+    if not modules_to_run:
+        print("All modules already passed. Nothing to resume.")
+        return 0
+
+    if passed_modules:
+        print(f"  Skipping passed: {sorted(passed_modules)}")
+        print(f"  Resuming: {modules_to_run}")
+
+    # Run orchestrator for remaining modules
+    orch = Orchestrator(
+        config=config,
+        run_dir=str(run_dir),
+        cc_model=args.model,
+    )
+
+    # Filter config to only remaining modules
+    config.modules = [m for m in config.modules if m.name in modules_to_run]
+
+    results = orch.run()
+
+    # Print summary
+    passed = sum(1 for r in results if r["status"] == "passed")
+    failed = sum(1 for r in results if r["status"] != "passed")
+
+    print()
+    print("=" * 60)
+    for r in results:
+        status = "✓" if r["status"] == "passed" else "✗"
+        extra = f"  {r.get('pr_url', '')}" if r.get("pr_url") else ""
+        print(f"  {status} {r['module']:20s}  {r['status']}{extra}")
+    print("=" * 60)
+    print(f"  {passed} passed, {failed} failed")
+
+    return 0 if failed == 0 else 1
 
 
 def _cmd_status(args) -> int:
