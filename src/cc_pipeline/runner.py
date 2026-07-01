@@ -189,6 +189,7 @@ class ModuleRunner:
                         module=self.module_name,
                         attempt=current_attempt,
                     )
+                    self._append_progress(step, "PASS", current_attempt)
                     completed = i
                     passed = True
                     break
@@ -236,8 +237,15 @@ class ModuleRunner:
         return pd
 
     def _inject_context(self, prompt: str, step: CompiledStep) -> str:
-        """Inject prior step outputs + output write instruction into prompt."""
+        """Inject prior step outputs + progress + output instruction into prompt."""
         pipeline_dir = Path(self.worktree_path) / ".pipeline"
+
+        # Inject progress.md if it exists (Anthropic harness pattern)
+        progress_file = pipeline_dir / "progress.md"
+        if progress_file.exists():
+            content = progress_file.read_text().strip()
+            if content:
+                prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
 
         # Inject prior step outputs if they exist
         if pipeline_dir.exists():
@@ -262,6 +270,20 @@ class ModuleRunner:
             )
 
         return prompt
+
+    def _append_progress(self, step: CompiledStep, status: str, attempt: int) -> None:
+        """Append a progress entry to .pipeline/progress.md after each step.
+
+        Follows Anthropic's harness pattern: each CC session can read what
+        previous sessions accomplished.
+        """
+        progress_file = Path(self.worktree_path) / ".pipeline" / "progress.md"
+        progress_file.parent.mkdir(parents=True, exist_ok=True)
+        loop_info = f" [{step.loop_file}]" if step.loop_file else ""
+        entry = f"- [{status.upper()}] {step.step_id}{loop_info} (module={self.module_name}, attempt={attempt})\n"
+
+        with open(progress_file, "a") as f:
+            f.write(entry)
 
     def _execute_step(self, step: CompiledStep) -> ExecResult:
         """Execute a step using the appropriate executor.
