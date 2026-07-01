@@ -47,6 +47,7 @@ class CCExecutor:
         cmd = [
             self.claude_path,
             "-p", prompt,
+            "--dangerously-skip-permissions",
         ]
 
         if self.model:
