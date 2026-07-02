@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from cc_pipeline.config import PipelineConfig, PipelineStep, Module
@@ -86,7 +87,7 @@ class PipelineCompiler:
                     compiled.append(CompiledStep(
                         step_id=step.id,
                         executor=step.executor,
-                        rendered_prompt=render(step.prompt, vars_with_file),
+                        rendered_prompt=render(self._resolve_prompt(step), vars_with_file),
                         postcondition=self._render_postcondition(step, vars_with_file),
                         retry=retry,
                         rollback=step.rollback,
@@ -98,7 +99,7 @@ class PipelineCompiler:
                 compiled.append(CompiledStep(
                     step_id=step.id,
                     executor=step.executor,
-                    rendered_prompt=render(step.prompt, base_vars),
+                    rendered_prompt=render(self._resolve_prompt(step), base_vars),
                     postcondition=self._render_postcondition(step, base_vars),
                     retry=retry,
                     rollback=step.rollback,
@@ -110,6 +111,23 @@ class PipelineCompiler:
         compiled = self._sort_by_dependencies(compiled)
 
         return compiled
+
+    def _resolve_prompt(self, step: PipelineStep) -> str:
+        """Return the effective prompt, resolving prompt_file if set.
+
+        Rules:
+          1. If prompt is set (non-empty), use it directly.
+          2. Otherwise if prompt_file is set, read that file.
+          3. If neither, return empty string.
+        """
+        if step.prompt:
+            return step.prompt
+        if step.prompt_file:
+            path = Path(step.prompt_file)
+            if not path.exists():
+                raise FileNotFoundError(f"prompt_file not found: {step.prompt_file}")
+            return path.read_text()
+        return ""
 
     def _render_postcondition(self, step: PipelineStep, variables: dict) -> dict | None:
         """Render variables inside postcondition shell command."""
