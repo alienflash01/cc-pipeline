@@ -152,8 +152,30 @@ def load_config(path: str) -> PipelineConfig:
     max_retries = raw.get("max_retries", 3)
     if not isinstance(concurrency, int) or concurrency < 1:
         raise ValueError(f"concurrency must be a positive integer, got: {concurrency}")
+    if concurrency > 100:
+        raise ValueError(f"concurrency must be <= 100, got: {concurrency}")
     if not isinstance(max_retries, int) or max_retries < 0:
         raise ValueError(f"max_retries must be a non-negative integer, got: {max_retries}")
+    if max_retries > 20:
+        raise ValueError(f"max_retries must be <= 20, got: {max_retries}")
+
+    # Validate source_files (security: prevent path traversal)
+    for mod in modules:
+        for sf in mod.source_files:
+            if ".." in sf or "/" in sf or "\\" in sf:
+                raise ValueError(
+                    f"Invalid source_file '{sf}' in module '{mod.name}': "
+                    f"no path traversal or slashes allowed"
+                )
+
+    # Validate timeout fields
+    for step in pipeline:
+        if step.timeout is not None:
+            if not isinstance(step.timeout, int) or step.timeout <= 0:
+                raise ValueError(
+                    f"Invalid timeout '{step.timeout}' in step '{step.id}': "
+                    f"must be a positive integer"
+                )
 
     # Warn about unimplemented fields
     import warnings as _warnings

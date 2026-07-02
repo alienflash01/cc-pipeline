@@ -50,7 +50,7 @@ class CCExecutor:
             "--dangerously-skip-permissions",
         ]
 
-        if self.model:
+        if self.model and self.model.strip():
             cmd.extend(["--model", self.model])
 
         if allowed_tools:

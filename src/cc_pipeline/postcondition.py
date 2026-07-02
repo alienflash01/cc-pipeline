@@ -38,16 +38,19 @@ def evaluate(
         shell=True,
         cwd=cwd,
         capture_output=True,
-        text=True,
         timeout=timeout,
     )
+
+    # Decode safely (handle binary output)
+    stdout = result.stdout.decode("utf-8", errors="replace") if isinstance(result.stdout, bytes) else (result.stdout or "")
+    stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else (result.stderr or "")
 
     # Shell failed → postcondition fails
     if result.returncode != 0:
         return PostconditionResult(
             passed=False,
-            stdout=result.stdout,
-            stderr=result.stderr,
+            stdout=stdout,
+            stderr=stderr,
             reason=f"Shell command exited with code {result.returncode}",
         )
 
@@ -55,12 +58,12 @@ def evaluate(
     if expect is None:
         return PostconditionResult(
             passed=True,
-            stdout=result.stdout,
-            stderr=result.stderr,
+            stdout=stdout,
+            stderr=stderr,
         )
 
     # Parse expect expression
-    return _evaluate_expect(expect, result.stdout, result.stderr)
+    return _evaluate_expect(expect, stdout, stderr)
 
 
 def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResult:

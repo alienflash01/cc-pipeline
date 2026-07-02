@@ -42,13 +42,13 @@ class GitCheckpoint:
             The tag name created.
         """
         # Stage all changes
-        self._run_git(["add", "-A"])
+        self._run_git(["add", "-A"], check=True)
 
         # Check if there are changes to commit
         status = self._run_git(["status", "--porcelain"])
         if status.stdout.strip():
             commit_msg = f"[pipeline:{module}:{step}:{attempt}] checkpoint"
-            self._run_git(["commit", "-m", commit_msg])
+            self._run_git(["commit", "-m", commit_msg], check=True)
 
         # Create tag — include loop_file when set
         if loop_file:

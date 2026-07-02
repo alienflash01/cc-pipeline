@@ -57,8 +57,11 @@ class StateManager:
         with self._lock:
             state = None
             if self.state_file.exists():
-                with open(self.state_file) as f:
-                    state = json.load(f)
+                try:
+                    with open(self.state_file) as f:
+                        state = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    state = None
             if state is None:
                 state = {"run_id": "unknown", "saved_at": "", "modules": {}}
             if module_name not in state["modules"]:
@@ -73,8 +76,11 @@ class StateManager:
         with self._lock:
             state = None
             if self.state_file.exists():
-                with open(self.state_file) as f:
-                    state = json.load(f)
+                try:
+                    with open(self.state_file) as f:
+                        state = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    state = None
             if state is None:
                 state = {"run_id": run_id, "saved_at": "", "modules": {}}
             state["run_id"] = run_id
