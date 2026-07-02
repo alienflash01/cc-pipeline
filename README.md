@@ -175,17 +175,76 @@ src/cc_pipeline/
 ## Testing
 
 ```bash
-# All tests (225 tests, ~12s)
+# All tests (259 tests, ~15s)
 pytest tests/ -v --cov=cc_pipeline --cov-report=term-missing
 
 # By layer
-pytest tests/unit/         # 138 unit tests
-pytest tests/integration/  # 40 integration tests
-pytest tests/e2e/          # 47 e2e/blackbox tests
+pytest tests/unit/         # unit tests
+pytest tests/integration/  # integration tests
+pytest tests/e2e/          # e2e/blackbox tests
 
 # Stress test (5 modules, no API needed)
 bash scripts/stress-test.sh
 ```
+
+## Use Cases
+
+cc-pipeline 是通用编排框架——UT 只是第一个场景。任何"多步 + CC + 验证 + 重试"的任务都适用。
+
+### 已验证场景：UT 自动生成
+
+```yaml
+pipeline:
+  - id: scaffold    # CC 生成测试脚手架
+  - id: generate    # CC 逐文件生成测试用例
+  - id: evaluate    # CC 质量评测
+```
+
+### 其他场景示例
+
+**代码重构/迁移：**
+```yaml
+pipeline:
+  - id: analyze     # CC 分析旧代码依赖
+  - id: refactor    # CC 逐文件迁移（loop: per_file）
+  - id: verify      # shell 运行测试套件
+  - id: review      # judge 审查迁移质量
+```
+
+**代码审查批量处理：**
+```yaml
+pipeline:
+  - id: diff        # shell git diff 提取变更
+  - id: review      # CC 逐文件审查
+  - id: security    # judge 安全审查（只读）
+  - id: report      # CC 汇总报告
+```
+
+**技术债清理：**
+```yaml
+pipeline:
+  - id: scan        # shell 静态分析（eslint/cppcheck）
+  - id: fix         # CC 逐文件修复告警
+  - id: verify      # shell 验证告警减少
+  - id: test        # shell 全量测试
+```
+
+**API 文档生成：**
+```yaml
+pipeline:
+  - id: scan        # shell ctags 扫描函数签名
+  - id: document    # CC 逐模块生成文档
+  - id: lint        # shell markdownlint 检查
+  - id: publish     # shell 部署 gh-pages
+```
+
+### 设计原则
+
+- **module = 任何目标单元**（文件/目录/API/服务）
+- **pipeline = 声明式 YAML**，不绑定具体场景
+- **三种 executor**：CC 干活 / shell 验证 / judge 裁判
+- **CC 间上下文传递**：`.pipeline/*.json` + `progress.md` 自动注入
+- **module 间并行 + module 内串行**
 
 ## Scripts
 
