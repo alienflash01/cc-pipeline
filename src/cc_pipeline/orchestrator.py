@@ -30,10 +30,12 @@ class Orchestrator:
         run_dir: str,
         worktree_root: str | None = None,
         cc_model: str = "glm-4.6",
+        resume: bool = False,
     ):
         self.config = config
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.resume = resume
         self.concurrency = config.concurrency
         self.run_id = "unknown"  # set by CLI
         # Default worktree root under run_dir to avoid cross-test conflicts
@@ -133,8 +135,22 @@ class Orchestrator:
 
         wt_path = None
         try:
-            # Create worktree
-            wt_path = self.worktree_mgr.create(module_name)
+            # Create worktree — resume from checkpoint if available
+            from_ref = None
+            skip_steps = set()
+            if self.resume:
+                from cc_pipeline.git_checkpoint import GitCheckpoint
+                gc = GitCheckpoint(repo_path=str(self.worktree_mgr.repo_path))
+                skip_steps = set(gc.list_completed_steps(module=module_name))
+                if skip_steps:
+                    # Find the latest checkpoint across all completed steps
+                    for step_id in sorted(skip_steps, reverse=True):
+                        latest = gc.find_latest_checkpoint(step=step_id, module=module_name)
+                        if latest:
+                            from_ref = latest
+                            break
+
+            wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref)
 
             # Find the module config
             module = next(m for m in self.config.modules if m.name == module_name)
@@ -148,11 +164,18 @@ class Orchestrator:
             state.set_run_id(getattr(self, "run_id", "unknown"))
 
             # Compile steps
-            steps = self.compiler.compile_module(module_name)
+            all_steps = self.compiler.compile_module(module_name)
+
+            # Filter out completed steps in resume mode
+            if skip_steps:
+                all_steps = [s for s in all_steps if s.step_id not in skip_steps]
+                import json as _resume_json
+                with open(Path(str(self.run_dir)) / module_name / "transcript.jsonl", "a") as _f:
+                    _f.write(_resume_json.dumps({"event": "resume_skip", "steps": sorted(skip_steps), "from_ref": from_ref}) + "\n")
 
             # Create runner
             runner = ModuleRunner(
-                steps=steps,
+                steps=all_steps,
                 module_name=module_name,
                 worktree_path=wt_path,
                 run_dir=str(self.run_dir),

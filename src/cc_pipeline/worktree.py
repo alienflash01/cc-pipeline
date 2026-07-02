@@ -25,11 +25,14 @@ class WorktreeManager:
         self._lock = threading.Lock()  # serialize git worktree operations
         self._worktrees: dict[str, str] = {}  # module_name → path
 
-    def create(self, module_name: str) -> str:
+    def create(self, module_name: str, from_ref: str | None = None) -> str:
         """Create a worktree for a module.
 
         Args:
             module_name: Module name (used for branch + path naming).
+            from_ref: Git ref (tag/commit/branch) to create worktree from.
+                      If None, uses base_branch. Used by resume to restore
+                      from latest checkpoint.
 
         Returns:
             Absolute path to the worktree directory.
@@ -79,9 +82,10 @@ class WorktreeManager:
                 cwd=self.repo_path, capture_output=True,
             )
 
-            # Create worktree with a new branch from base
+            # Create worktree with a new branch from ref or base
+            ref = from_ref or self.base_branch
             subprocess.run(
-                ["git", "worktree", "add", "-b", branch, str(wt_path), self.base_branch],
+                ["git", "worktree", "add", "-b", branch, str(wt_path), ref],
                 cwd=self.repo_path, capture_output=True, check=True,
             )
 

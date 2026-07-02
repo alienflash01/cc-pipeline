@@ -203,9 +203,8 @@ def _cmd_resume(args) -> int:
         config=config,
         run_dir=str(run_dir),
         cc_model=args.model,
+        resume=True,
     )
-
-    # Filter config to only remaining modules
     config.modules = [m for m in config.modules if m.name in modules_to_run]
 
     results = orch.run()

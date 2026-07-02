@@ -119,3 +119,25 @@ class GitCheckpoint:
         self._run_git(["reset", "--hard", latest])
         self._run_git(["clean", "-fd", "--exclude=.pipeline/"])
         return True
+
+    def list_completed_steps(self, module: str) -> list[str]:
+        """List all completed step IDs for a module from git tags.
+
+        Scans tags matching pipeline/{module}/{step}/{attempt} and returns
+        the unique step names. Used by resume to skip already-completed steps.
+
+        Returns:
+            List of step IDs that have at least one checkpoint tag.
+        """
+        prefix = f"pipeline/{module}/"
+        result = self._run_git(["tag", "-l", f"{prefix}*"])
+        tags = [t.strip() for t in result.stdout.strip().split("\n") if t.strip()]
+
+        steps = set()
+        for tag in tags:
+            # tag format: pipeline/{module}/{step}/{attempt}
+            parts = tag.split("/")
+            if len(parts) >= 4:
+                steps.add(parts[2])
+
+        return sorted(steps)
