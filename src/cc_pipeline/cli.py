@@ -310,7 +310,14 @@ def _cmd_stop(args) -> int:
 
     try:
         os.kill(pid, signal_num)
-        os.waitpid(pid, 0)
+        # Give process time to handle signal gracefully
+        import time
+        for _ in range(30):  # wait up to 30s
+            try:
+                os.kill(pid, 0)  # check if still alive
+            except ProcessLookupError:
+                break
+            time.sleep(1)
         print(f"Process {pid} stopped.")
     except ProcessLookupError:
         print(f"Process {pid} already stopped.")
