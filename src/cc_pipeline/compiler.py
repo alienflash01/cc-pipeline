@@ -1,9 +1,8 @@
 """Pipeline Compiler — convert YAML pipeline + module into executable CompiledSteps."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from cc_pipeline.config import PipelineConfig, PipelineStep, Module
 from cc_pipeline.render import render
@@ -24,6 +23,7 @@ class CompiledStep:
     depends_on: str | None = None
     loop_file: str | None = None  # set when this is a loop expansion
     model: str = ""  # per-step model (empty = use global)
+    timeout: int | None = None  # per-step timeout override
 
 
 class PipelineCompiler:
@@ -101,6 +101,7 @@ class PipelineCompiler:
                         depends_on=step.depends_on,
                         loop_file=filename,
                         model=step.model,
+                        timeout=step.timeout,
                     ))
             else:
                 compiled.append(CompiledStep(
@@ -113,6 +114,7 @@ class PipelineCompiler:
                     output=step.output,
                     depends_on=step.depends_on,
                     model=step.model,
+                    timeout=step.timeout,
                 ))
 
         # Sort by depends_on (topological-ish)

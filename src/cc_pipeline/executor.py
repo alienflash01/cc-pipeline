@@ -62,6 +62,7 @@ class CCExecutor:
             capture_output=True,
             text=True,
             timeout=timeout or self.default_timeout,
+            start_new_session=True,
         )
 
         return CCResult(

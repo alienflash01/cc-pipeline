@@ -27,6 +27,7 @@ class GitCheckpoint:
         step: str,
         module: str,
         attempt: int,
+        loop_file: str | None = None,
     ) -> str:
         """Create a git checkpoint (commit + tag) for the current state.
 
@@ -34,6 +35,8 @@ class GitCheckpoint:
             step: Step ID (e.g. "scaffold", "generate").
             module: Module name.
             attempt: Attempt number (1-based).
+            loop_file: When set (loop expansion), the file name is included
+                       in the tag so each file gets a distinct checkpoint.
 
         Returns:
             The tag name created.
@@ -47,8 +50,11 @@ class GitCheckpoint:
             commit_msg = f"[pipeline:{module}:{step}:{attempt}] checkpoint"
             self._run_git(["commit", "-m", commit_msg])
 
-        # Create tag
-        tag = f"pipeline/{module}/{step}/{attempt}"
+        # Create tag — include loop_file when set
+        if loop_file:
+            tag = f"pipeline/{module}/{step}/{loop_file}/{attempt}"
+        else:
+            tag = f"pipeline/{module}/{step}/{attempt}"
         self._run_git(["tag", "-f", tag])
 
         return tag
@@ -58,6 +64,7 @@ class GitCheckpoint:
         step: str,
         module: str,
         attempt: int,
+        loop_file: str | None = None,
     ) -> None:
         """Rollback the worktree to a checkpoint state.
 
@@ -68,8 +75,12 @@ class GitCheckpoint:
             step: Step ID to roll back to.
             module: Module name.
             attempt: Attempt number of the checkpoint.
+            loop_file: If the checkpoint was for a loop file, include it.
         """
-        tag = f"pipeline/{module}/{step}/{attempt}"
+        if loop_file:
+            tag = f"pipeline/{module}/{step}/{loop_file}/{attempt}"
+        else:
+            tag = f"pipeline/{module}/{step}/{attempt}"
 
         # Hard reset to the tagged commit
         self._run_git(["reset", "--hard", tag])
@@ -80,7 +91,8 @@ class GitCheckpoint:
     def find_latest_checkpoint(self, step: str, module: str) -> str | None:
         """Find the latest checkpoint tag for a step/module.
 
-        Tags are pipeline/{module}/{step}/{attempt}. Returns the one with
+        Tags are pipeline/{module}/{step}/{attempt} or
+        pipeline/{module}/{step}/{loop_file}/{attempt}. Returns the one with
         the highest attempt number, or None if no tags exist.
 
         Returns:
@@ -123,8 +135,10 @@ class GitCheckpoint:
     def list_completed_steps(self, module: str) -> list[str]:
         """List all completed step IDs for a module from git tags.
 
-        Scans tags matching pipeline/{module}/{step}/{attempt} and returns
-        the unique step names. Used by resume to skip already-completed steps.
+        Scans tags matching pipeline/{module}/* and returns the unique step
+        names. Handles both formats:
+          - pipeline/{module}/{step}/{attempt}
+          - pipeline/{module}/{step}/{loop_file}/{attempt}
 
         Returns:
             List of step IDs that have at least one checkpoint tag.
@@ -135,9 +149,35 @@ class GitCheckpoint:
 
         steps = set()
         for tag in tags:
-            # tag format: pipeline/{module}/{step}/{attempt}
-            parts = tag.split("/")
-            if len(parts) >= 4:
-                steps.add(parts[2])
+            # Remove the pipeline/{module}/ prefix, then take the first segment as step
+            rest = tag[len(prefix):]
+            parts = rest.split("/")
+            if parts:
+                steps.add(parts[0])
 
         return sorted(steps)
+
+    def cleanup_tags(self, module: str | None = None) -> int:
+        """Delete pipeline/* tags for garbage collection.
+
+        Args:
+            module: If set, only delete tags for this module.
+                    If None, delete all pipeline/* tags.
+
+        Returns:
+            Number of tags deleted.
+        """
+        if module:
+            pattern = f"pipeline/{module}/*"
+        else:
+            pattern = "pipeline/*"
+
+        result = self._run_git(["tag", "-l", pattern])
+        tags = [t.strip() for t in result.stdout.strip().split("\n") if t.strip()]
+
+        count = 0
+        for tag in tags:
+            self._run_git(["tag", "-d", tag])
+            count += 1
+
+        return count

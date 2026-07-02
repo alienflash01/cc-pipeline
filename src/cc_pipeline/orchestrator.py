@@ -8,7 +8,6 @@ from cc_pipeline.config import PipelineConfig
 from cc_pipeline.compiler import PipelineCompiler
 from cc_pipeline.render import render
 from cc_pipeline.executor import CCExecutor, ShellExecutor
-from cc_pipeline.logger import Logger
 from cc_pipeline.runner import ModuleRunner
 from cc_pipeline.worktree import WorktreeManager
 
@@ -50,9 +49,34 @@ class Orchestrator:
         self.compiler = PipelineCompiler(config)
         self.cc_model = cc_model
 
+        # Shutdown flag (self-contained, no cli import)
+        self._shutdown_requested = False
+        # Reset legacy global flag to avoid test pollution
+        try:
+            import cc_pipeline.cli as _cli_mod
+            _cli_mod._shutdown_requested = False
+        except Exception:
+            pass
+
         # Shared state manager (thread-safe)
         from cc_pipeline.state import StateManager
         self.state_mgr = StateManager(run_dir=str(self.run_dir))
+
+    def request_shutdown(self) -> None:
+        """Request a graceful shutdown of the orchestrator."""
+        self._shutdown_requested = True
+
+    @property
+    def shutdown_requested(self) -> bool:
+        """Check if shutdown has been requested (self flag or legacy cli flag)."""
+        if self._shutdown_requested:
+            return True
+        # Backward compat: check legacy cli module flag
+        try:
+            import cc_pipeline.cli as cli_mod
+            return getattr(cli_mod, "_shutdown_requested", False)
+        except Exception:
+            return False
 
     def run(self) -> list[dict]:
         """Run all modules in parallel.
@@ -62,13 +86,10 @@ class Orchestrator:
         """
         results: list[dict] = []
 
-        # Check for shutdown signal between module dispatches
-        import cc_pipeline.cli as cli_mod
-
         # Serial mode (concurrency=1): check shutdown before each module
         if self.concurrency <= 1:
             for module in self.config.modules:
-                if cli_mod._shutdown_requested:
+                if self.shutdown_requested:
                     results.append({
                         "status": "skipped",
                         "module": module.name,
@@ -90,7 +111,7 @@ class Orchestrator:
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             future_to_module = {}
             for module in self.config.modules:
-                if cli_mod._shutdown_requested:
+                if self.shutdown_requested:
                     results.append({
                         "status": "skipped",
                         "module": module.name,

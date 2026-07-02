@@ -1,7 +1,6 @@
 """Variable Renderer — substitute {var} placeholders in prompt templates."""
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -24,6 +23,10 @@ def render(
     Raises:
         KeyError: If a {variable} is not found in variables and is not a file ref.
     """
+    # Step 1: Handle escaped braces {{ }} → literal { }
+    # Process BEFORE variable substitution so {{var}} is not treated as {var}.
+    template = template.replace("{{", "\x00LBRACE\x00").replace("}}", "\x00RBRACE\x00")
+    
     # Strategy: find all {...} spans, replace left to right, track string offsets.
     # This avoids re-matching injected JSON content that contains braces.
     
@@ -56,4 +59,9 @@ def render(
     # Append remaining text after last match
     result.append(template[last_end:])
     
-    return "".join(result)
+    rendered = "".join(result)
+    
+    # Step 2: Restore escaped braces as literal braces
+    rendered = rendered.replace("\x00LBRACE\x00", "{").replace("\x00RBRACE\x00", "}")
+    
+    return rendered

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import yaml
 
@@ -24,6 +23,7 @@ class PipelineStep:
     postcondition: dict | None = None
     on_complete: list | None = None
     skill: str | None = None
+    timeout: int | None = None
 
 
 @dataclass
@@ -101,6 +101,7 @@ def load_config(path: str) -> PipelineConfig:
             model=step_raw.get("model", ""),
             command=step_raw.get("command", ""),
             prompt_file=step_raw.get("prompt_file"),
+            timeout=step_raw.get("timeout"),
         )
         pipeline.append(step)
     
@@ -153,6 +154,14 @@ def load_config(path: str) -> PipelineConfig:
             _warnings.warn(f"Step '{step.id}': on_complete field is not yet implemented, ignored", stacklevel=2)
         if step.skill:
             _warnings.warn(f"Step '{step.id}': skill field is not yet implemented, ignored", stacklevel=2)
+
+    # Warn when executor field is missing (defaults to claude-code)
+    for step_raw in raw["pipeline"]:
+        if "executor" not in step_raw:
+            _warnings.warn(
+                f"Step '{step_raw['id']}': executor field missing, defaulting to 'claude-code'",
+                stacklevel=2,
+            )
 
     return PipelineConfig(
         repo=raw["repo"],

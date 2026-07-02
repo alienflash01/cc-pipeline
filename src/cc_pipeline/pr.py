@@ -56,29 +56,3 @@ class PRCreator:
             return None
 
         return result.stdout.strip() or None
-
-    def merge_to_base(self, branch: str, base: str) -> bool:
-        """Merge a branch into the base branch.
-
-        Args:
-            branch: Source branch to merge from.
-            base: Target branch to merge into.
-
-        Returns:
-            True if merge succeeded.
-        """
-        # Checkout base
-        subprocess.run(
-            ["git", "checkout", base],
-            cwd=str(self.repo_path),
-            capture_output=True,
-        )
-
-        # Merge branch
-        result = subprocess.run(
-            ["git", "merge", "--no-ff", branch, "-m", f"Merge {branch} into {base}"],
-            cwd=str(self.repo_path),
-            capture_output=True,
-        )
-
-        return result.returncode == 0

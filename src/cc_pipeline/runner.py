@@ -14,7 +14,6 @@ import time as _time_mod
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from cc_pipeline.compiler import CompiledStep
 from cc_pipeline.executor import CCExecutor, CCResult, ShellExecutor, ShellResult
@@ -145,7 +144,7 @@ class ModuleRunner:
                         # Free retries exhausted — treat as CC failure, consume budget
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
-                            reason=f"Rate limit free retries exhausted, consuming budget",
+                            reason="Rate limit free retries exhausted, consuming budget",
                         )
                         exec_result = ExecResult(
                             ExecOutcome.CC_FAILED,
@@ -244,6 +243,10 @@ class ModuleRunner:
         if progress_file.exists():
             content = progress_file.read_text().strip()
             if content:
+                # Cap to last 20 lines to prevent unbounded growth
+                lines = content.splitlines()
+                if len(lines) > 20:
+                    content = "\n".join(lines[-20:])
                 prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
 
         # Inject prior step outputs if they exist
@@ -257,14 +260,15 @@ class ModuleRunner:
                         if content:
                             context_lines.append(f"[{f.name}]:\n{content}")
                     except Exception:
-                        pass
+                        import warnings
+                        warnings.warn(f"Failed to read context file {f.name}", stacklevel=2)
                 context_lines.append("---\n")
                 prompt += "\n".join(context_lines)
 
         # Inject output write instruction
         if step.output:
             prompt += (
-                f"\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
+                "\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
                 f"以 JSON 格式写入 .pipeline/{step.output}"
             )
 
@@ -331,6 +335,7 @@ class ModuleRunner:
                 prompt=full_prompt,
                 cwd=self.worktree_path,
                 allowed_tools=allowed_tools,
+                timeout=step.timeout,
             )
         except subprocess.TimeoutExpired:
             return ExecResult(ExecOutcome.TIMEOUT, reason="CC timeout")

@@ -56,12 +56,12 @@ class TestPRCreator:
         assert url is None
 
     @patch("cc_pipeline.pr.subprocess.run")
-    def test_merge_branch_called_before_pr(self, mock_run):
-        """merge_to_base() merges the worktree branch to base before PR."""
+    def test_create_calls_gh_pr(self, mock_run):
+        """PRCreator.create calls gh pr create."""
         from cc_pipeline.pr import PRCreator
-        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        mock_run.return_value = MagicMock(returncode=0, stdout="https://github.com/owner/repo/pull/1", stderr="")
         creator = PRCreator(repo_path="/tmp/repo")
-        creator.merge_to_base(branch="ut-auto/auth", base="personal/dev")
-        # Should call git merge
+        url = creator.create(branch="ut-auto/auth", title="UT for auth", body="test", labels=["ut"])
+        # Should call gh pr create
         calls = [c[0][0] for c in mock_run.call_args_list]
-        assert any("merge" in " ".join(c) for c in calls)
+        assert any("pr" in " ".join(c) and "create" in " ".join(c) for c in calls)

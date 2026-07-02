@@ -94,11 +94,11 @@ class WorktreeManager:
 
     def cleanup(self, module_name: str) -> None:
         """Remove a worktree after successful completion."""
-        wt_path = self._worktrees.get(module_name)
-        if wt_path is None:
-            return
-
         with self._lock:
+            wt_path = self._worktrees.get(module_name)
+            if wt_path is None:
+                return
+
             subprocess.run(
                 ["git", "worktree", "remove", "--force", wt_path],
                 cwd=self.repo_path, capture_output=True,
@@ -111,7 +111,7 @@ class WorktreeManager:
                 cwd=self.repo_path, capture_output=True,
             )
 
-        self._worktrees.pop(module_name, None)
+            self._worktrees.pop(module_name, None)
 
     def preserve(self, module_name: str) -> None:
         """Keep the worktree for failure analysis (no cleanup)."""

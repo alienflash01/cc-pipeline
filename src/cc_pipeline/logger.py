@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,6 +15,7 @@ class Logger:
         self.log_dir = Path(run_dir) / module_name
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.log_file = self.log_dir / "transcript.jsonl"
+        self._lock = threading.Lock()
         # Create empty file so it exists immediately
         self.log_file.touch(exist_ok=True)
 
@@ -25,8 +27,9 @@ class Logger:
             "event": event,
             **kwargs,
         }
-        with open(self.log_file, "a") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with self._lock:
+            with open(self.log_file, "a") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def log_pass(self, step: str, attempt: int, info: dict | None = None) -> None:
         """Log a step pass event."""
