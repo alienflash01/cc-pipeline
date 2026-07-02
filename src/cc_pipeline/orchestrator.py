@@ -60,9 +60,41 @@ class Orchestrator:
         """
         results: list[dict] = []
 
+        # Check for shutdown signal between module dispatches
+        import cc_pipeline.cli as cli_mod
+
+        # Serial mode (concurrency=1): check shutdown before each module
+        if self.concurrency <= 1:
+            for module in self.config.modules:
+                if cli_mod._shutdown_requested:
+                    results.append({
+                        "status": "skipped",
+                        "module": module.name,
+                        "reason": "graceful shutdown requested",
+                    })
+                    continue
+                try:
+                    result = self._run_module(module.name)
+                    results.append(result)
+                except Exception as e:
+                    results.append({
+                        "status": "failed",
+                        "module": module.name,
+                        "error": str(e),
+                    })
+            return results
+
+        # Parallel mode: submit all at once, but check shutdown before dispatch
         with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
             future_to_module = {}
             for module in self.config.modules:
+                if cli_mod._shutdown_requested:
+                    results.append({
+                        "status": "skipped",
+                        "module": module.name,
+                        "reason": "graceful shutdown requested",
+                    })
+                    continue
                 future = pool.submit(self._run_module, module.name)
                 future_to_module[future] = module.name
 
