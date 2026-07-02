@@ -158,7 +158,7 @@ class ModuleRunner:
                                            ExecOutcome.TIMEOUT, ExecOutcome.UNKNOWN_ERROR):
                     failure_reason = f"{exec_result.outcome.value}: {exec_result.reason}"
 
-                    if retry_budget > 1:
+                    if retry_budget > 0:
                         retry_budget -= 1
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
@@ -194,7 +194,7 @@ class ModuleRunner:
                     passed = True
                     break
                 else:
-                    if retry_budget > 1:
+                    if retry_budget > 0:
                         retry_budget -= 1
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,

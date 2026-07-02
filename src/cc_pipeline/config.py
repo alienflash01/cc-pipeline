@@ -99,6 +99,8 @@ def load_config(path: str) -> PipelineConfig:
             on_complete=step_raw.get("on_complete"),
             skill=step_raw.get("skill"),
             model=step_raw.get("model", ""),
+            command=step_raw.get("command", ""),
+            prompt_file=step_raw.get("prompt_file"),
         )
         pipeline.append(step)
     
@@ -115,6 +117,23 @@ def load_config(path: str) -> PipelineConfig:
         )
         modules.append(mod)
     
+    # Validate module names (security: prevent command injection)
+    import re as _re
+    _SAFE_NAME = _re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-]*$")
+    for mod in modules:
+        if not _SAFE_NAME.match(mod.name):
+            raise ValueError(
+                f"Invalid module name '{mod.name}': only alphanumeric, underscore, "
+                f"and hyphen allowed (no shell metacharacters)"
+            )
+
+    # Validate output fields (security: prevent path traversal)
+    for step in pipeline:
+        if step.output and (".." in step.output or "/" in step.output):
+            raise ValueError(
+                f"Invalid output '{step.output}': no path traversal or slashes allowed"
+            )
+
     return PipelineConfig(
         repo=raw["repo"],
         base_branch=raw.get("base_branch", "main"),

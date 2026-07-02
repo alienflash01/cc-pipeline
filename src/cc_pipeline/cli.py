@@ -17,8 +17,7 @@ def _signal_handler(signum, frame):
     """Graceful shutdown: signal handler sets a flag for the main loop."""
     global _shutdown_requested
     _shutdown_requested = True
-    # Re-raise KeyboardInterrupt for non-daemon mode
-    if not _shutdown_requested:
+    if signum == signal.SIGINT:
         raise KeyboardInterrupt()
 
 

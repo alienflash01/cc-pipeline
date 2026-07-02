@@ -235,12 +235,10 @@ modules:
         config = load_config(str(config_path))
         compiler = PipelineCompiler(config)
 
-        steps = compiler.compile_module("empty_mod")
-        # With empty source_files, loop:per_file should produce 0 sub-steps
-        gen_steps = [s for s in steps if s.loop_file is not None]
-        assert len(gen_steps) == 0
-        # verify step still present
-        assert any(s.step_id == "verify" for s in steps)
+        # With empty source_files, loop:per_file should raise ValueError
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="empty source_files"):
+            compiler.compile_module("empty_mod")
 
 
 # ═══════════════════════════════════════════════════════════════

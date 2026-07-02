@@ -127,14 +127,21 @@ def _evaluate_single(cond: str, data: dict) -> bool:
         return False
     actual = data[field_name]
 
-    # Parse expected value (int or float or string)
-    try:
-        expected = int(raw_value)
-    except ValueError:
+    # Parse expected value (int or float or bool/null or string)
+    if raw_value.lower() == "true":
+        expected = True
+    elif raw_value.lower() == "false":
+        expected = False
+    elif raw_value.lower() == "null" or raw_value.lower() == "none":
+        expected = None
+    else:
         try:
-            expected = float(raw_value)
+            expected = int(raw_value)
         except ValueError:
-            expected = raw_value.strip("'\"")
+            try:
+                expected = float(raw_value)
+            except ValueError:
+                expected = raw_value.strip("'\"")
 
     # Compare — guard against type mismatch (None, mixed types)
     try:

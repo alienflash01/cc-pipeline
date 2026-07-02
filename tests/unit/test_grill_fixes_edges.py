@@ -179,7 +179,7 @@ class TestRateLimitBudgetExhaustion:
         result = runner.run()
         assert result["status"] == "failed"
         # Total calls: MAX_FREE_RATE_LIMIT_RETRIES (free) + retry (budget)
-        assert mock_run.call_count == MAX_FREE_RATE_LIMIT_RETRIES + step.retry
+        assert mock_run.call_count == MAX_FREE_RATE_LIMIT_RETRIES + step.retry + 1
 
 
 # ═══════════════════════════════════════════════════════════════

@@ -42,7 +42,7 @@ class TestRateLimitBudgetProtection:
         result = runner.run()
         assert result["status"] == "failed"
         # Total calls = MAX_FREE_RATE_LIMIT_RETRIES (free) + step.retry (budget)
-        expected_max = MAX_FREE_RATE_LIMIT_RETRIES + step.retry
+        expected_max = MAX_FREE_RATE_LIMIT_RETRIES + step.retry + 1
         assert mock_run.call_count <= expected_max
 
     @patch("cc_pipeline.executor.subprocess.run")

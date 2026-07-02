@@ -82,7 +82,12 @@ class PipelineCompiler:
         for step in self.config.pipeline:
             retry = step.retry if step.retry is not None else self.config.max_retries
 
-            if step.loop == "per_file" and module.source_files:
+            if step.loop == "per_file":
+                if not module.source_files:
+                    raise ValueError(
+                        f"Step '{step.id}' uses loop: per_file but module "
+                        f"'{module.name}' has empty source_files"
+                    )
                 for filename in module.source_files:
                     vars_with_file = {**base_vars, "file": filename}
                     compiled.append(CompiledStep(

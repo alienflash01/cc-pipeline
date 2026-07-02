@@ -184,4 +184,4 @@ class TestTimeoutHandling:
         result = runner.run()
         assert result["status"] == "failed"
         # Should have tried exactly retry=2 times
-        assert mock_run.call_count == 2
+        assert mock_run.call_count == 3  # 1 initial + 2 retries (retry=2)
