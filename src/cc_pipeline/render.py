@@ -31,6 +31,7 @@ def render(
     # This avoids re-matching injected JSON content that contains braces.
     
     # Pattern: match {.pipeline/...} and {variable} forms
+    # Variable names must be valid identifiers (no spaces)
     pattern = re.compile(r"\{([^}]+)\}")
     
     result = []
@@ -49,7 +50,7 @@ def render(
                 result.append(full_path.read_text())
             else:
                 result.append(f"[file not found: {var_name}]")
-        elif var_name in variables:
+        elif var_name in variables and not any(c.isspace() for c in var_name):
             val = variables[var_name]
             result.append("" if val is None else str(val))
         else:

@@ -34,8 +34,8 @@ class ExecOutcome(Enum):
 
 
 # CO-style rate limit protection
-MAX_FREE_RATE_LIMIT_RETRIES = 5   # max free retries before consuming budget
-RATE_LIMIT_BACKOFF_SECS = 60      # wait between rate-limit retries (CO default: 120)
+MAX_FREE_RATE_LIMIT_RETRIES = 3   # max free retries before consuming budget
+RATE_LIMIT_BACKOFF_SECS = 30      # wait between rate-limit retries
 
 
 @dataclass

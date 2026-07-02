@@ -177,6 +177,17 @@ def load_config(path: str) -> PipelineConfig:
                     f"must be a positive integer"
                 )
 
+    # Validate model field (security: no newlines/spaces for injection)
+    model_val = raw.get("model", "")
+    if model_val and ("\n" in model_val or "\r" in model_val):
+        raise ValueError(f"Invalid model '{model_val}': no newlines allowed")
+
+    # Warn about empty source_dir
+    for mod in modules:
+        if mod.source_dir == "":
+            import warnings as _sd_w
+            _sd_w.warn(f"Module '{mod.name}' has empty source_dir", stacklevel=2)
+
     # Warn about unimplemented fields
     import warnings as _warnings
     for step in pipeline:

@@ -94,23 +94,24 @@ def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResu
             reason="stdout is not valid JSON",
         )
 
-    # Split by && for AND expressions
-    conditions = [c.strip() for c in expect.split("&&")]
+    # Split by || for OR expressions, then && for AND within each OR group
+    or_parts = [p.strip() for p in expect.split("||")]
 
-    for cond in conditions:
-        if not _evaluate_single(cond, data):
+    for or_part in or_parts:
+        and_conditions = [c.strip() for c in or_part.split("&&")]
+        if all(_evaluate_single(cond, data) for cond in and_conditions):
             return PostconditionResult(
-                passed=False,
+                passed=True,
                 stdout=stdout,
                 stderr=stderr,
-                reason=f"Condition failed: {cond}",
+                reason="All conditions passed",
             )
 
     return PostconditionResult(
-        passed=True,
+        passed=False,
         stdout=stdout,
         stderr=stderr,
-        reason="All conditions passed",
+        reason=f"Condition failed: {expect}",
     )
 
 

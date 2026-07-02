@@ -200,9 +200,8 @@ class Orchestrator:
             # Filter out completed steps in resume mode
             if skip_steps:
                 all_steps = [s for s in all_steps if s.step_id not in skip_steps]
-                import json as _resume_json
-                with open(Path(str(self.run_dir)) / module_name / "transcript.jsonl", "a") as _f:
-                    _f.write(_resume_json.dumps({"event": "resume_skip", "steps": sorted(skip_steps), "from_ref": from_ref}) + "\n")
+                logger.log_pass(step="resume_skip", attempt=0,
+                                info={"steps": sorted(skip_steps), "from_ref": from_ref})
 
             # Create runner
             runner = ModuleRunner(
@@ -252,9 +251,7 @@ class Orchestrator:
                         state.update_module(module_name, pr_url=pr_url)
                         result["pr_url"] = pr_url
                 except Exception as e:
-                    import json as _pr_json
-                    with open(Path(str(self.run_dir)) / module_name / "transcript.jsonl", "a") as _pf:
-                        _pf.write(_pr_json.dumps({"event": "pr_error", "module": module_name, "error": str(e)}) + "\n")
+                    logger.log_fail(step="pr_creation", attempt=0, reason=str(e))
 
                 self.worktree_mgr.cleanup(module_name)
             else:
