@@ -193,3 +193,153 @@ README 说"GitCheckpoint 确保即使 CC 改了源码，rollback 时也会恢复
 1. **加 `examples/quickstart/`** — 5 分钟内跑通第一个 pipeline（用 shell executor，不需要 CC API）
 2. **加 `cc-pipeline report`** — 生成 Markdown 运行报告，客户能直接贴到 IM 群里汇报
 3. **记录完整 CC prompt 到 transcript** — 这是调试体验的最大短板
+
+---
+
+## 对抗验证模式（Adversarial Verification）
+
+> 来源：CC Workflows 原生模式（alexop.dev 分析）+ 学术验证方法论
+> 对 cc-pipeline 的价值：judge executor 从"单次裁判"升级为"多视角对抗投票"
+
+### 核心思想
+
+**不要相信单个 agent 的判断。让多个独立 agent 互相打架，只有活下来的结论才能输出。**
+
+LLM 天生"好说话"——让它确认，它倾向点头；让它找茬，它才会真审。用多个不同视角的"找茬者"投票，比一个"确认者"可靠得多。
+
+```
+发现一个 issue
+    ├── skeptic 1（正确性视角）→ 尝试推翻
+    ├── skeptic 2（安全视角）  → 尝试推翻
+    └── skeptic 3（可复现视角）→ 尝试推翻
+
+多数无法推翻 → 保留 / 多数推翻 → 丢弃
+```
+
+### 四种模式
+
+#### 模式 1：Adversarial Verify（对抗验证）
+
+每个发现派 N 个"质疑者"，prompt 是"**尝试推翻它**"而非"验证它对不对"：
+
+```
+对每个 finding：
+  spawn 3 个独立 skeptic agent，prompt = "尝试推翻这个发现"
+  每个 skeptic 返回 { refuted: true/false, reason: "..." }
+
+≥2 个 skeptic 无法推翻 → 保留（经受住了对抗）
+<2 个 → 丢弃（可能是假阳性）
+```
+
+关键：skeptic 的 prompt 是"尝试推翻"而非"确认"。利用 LLM 顺应性——让它确认它倾向说对，让它找茬它才批判。
+
+#### 模式 2：Perspective-Diverse Verify（多视角验证）
+
+不是 N 个相同质疑者，而是**每个质疑者拿不同的放大镜**：
+
+| 质疑者 | 关注点 | 能抓到的假阳性 |
+|---|---|---|
+| 正确性视角 | 逻辑自洽？边界条件？类型匹配？ | "看起来对但逻辑实际有 bug" |
+| 安全视角 | 可被利用？注入/溢出/越权？ | "测试覆盖了但攻击面没变" |
+| 可复现视角 | 稳定触发？依赖环境？flaky？ | "偶尔通过偶尔失败的噪声测试" |
+
+冗余只能防同一个盲区，多样性防不同盲区。
+
+#### 模式 3：Judge Panel（裁判组）
+
+不是验证已有发现，而是**从多个生成结果中选最好的并嫁接优点**：
+
+```
+生成 3 个不同角度的方案（性能/可读性/安全）
+  → 并行裁判打分
+  → 选最高分方案
+  → 嫁接其他方案的优点
+  → 最终输出
+```
+
+#### 模式 4：Loop-Until-Dry（循环挖干）
+
+不知道有多少东西要找时，**一直派 agent 去找，直到连续 K 轮没有新发现**：
+
+```
+while (连续无新发现 < 2 轮):
+    派 N 个 finder agent 找 bug
+    去重（对"所有见过的"而非"只含已确认的"）
+    对新发现做对抗验证
+    只保留通过验证的
+```
+
+关键细节：去重是对 `seen`（所有见过的）而非 `confirmed`（只含已确认的）。否则被否决的发现下一轮又会被重新发现，死循环不收敛。
+
+### 映射到 cc-pipeline 的三种方案
+
+#### 方案 A：postcondition 级对抗验证
+
+```yaml
+- id: evaluate
+  executor: judge
+  prompt: "评估测试质量"
+  postcondition:
+    shell: "true"
+    verify:              # ← 新增
+      mode: adversarial
+      perspectives: [correctness, security, flakiness]
+      min_votes: 2
+      schema:
+        score: int
+        verdict: string
+```
+
+runner 逻辑：对每个 postcondition 失败的 step，不再直接 retry，而是派 3 个 judge agent 从不同角度打分，≥2 个通过 → 保留，<2 个 → rollback + retry。
+
+#### 方案 B：新增 verify executor 类型
+
+```yaml
+- id: verify_tests
+  executor: verify      # ← 第四种 executor
+  prompt: "验证生成的测试是否真正有效"
+  config:
+    rounds: 3
+    perspectives:
+      - "测试是否覆盖了边界条件"
+      - "测试是否有有效断言"
+      - "测试是否 flaky（运行 3 次结果一致）"
+    consensus: majority   # majority / supermajority / unanimous
+  depends_on: generate
+```
+
+#### 方案 C：loop-until-dry 覆盖率迭代
+
+```yaml
+- id: coverage_fill
+  executor: claude-code
+  loop: until_dry       # ← 新增 loop 模式
+  max_rounds: 5
+  dry_threshold: 2
+  prompt: |
+    当前未覆盖的代码行：{uncovered_lines}
+    为这些代码生成补充测试。
+  postcondition:
+    shell: "gcov --json-output -"
+    expect: "$.line >= {line_threshold}"
+```
+
+每轮：gcov 提取未覆盖行 → 注入 prompt → CC 针对性生成 → 重新测量 → 覆盖率连续 2 轮不提升 → 停止。这是 CoverUp 论文的核心方法。
+
+### 对比：传统验证 vs 对抗验证
+
+| 维度 | 传统验证（cc-pipeline 现状） | 对抗验证 |
+|---|---|---|
+| 裁判数量 | 1 个 judge | N 个 skeptic |
+| 提问方式 | "这个对吗？" | "尝试推翻这个" |
+| 信任模型 | 信任 AI 判断 | 多视角投票制 |
+| 假阳性率 | 高（AI 倾向说好话） | 低（多角度交叉验证） |
+| 盲区覆盖 | 单一视角有盲区 | 不同视角覆盖不同盲区 |
+| Token 成本 | 1 次 judge 调用 | N 次 skeptic 调用 |
+| 适用场景 | 快速筛过 | 关键决策（PR 合并、覆盖率达标） |
+
+### 优先级建议
+
+- **v0.4**：方案 A（postcondition 级对抗验证）— 改动最小，只需在 runner 中加一层 verify 逻辑
+- **v0.5**：方案 C（loop-until-dry 覆盖率迭代）— 这是与 CoverUp 竞争的核心差异化能力
+- **v0.6**：方案 B（verify executor）— 四层信任模型（CC/shell/judge/verify）的完整形态
