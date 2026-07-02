@@ -27,6 +27,7 @@
 | `id` | string | ✅ | — | 步骤唯一标识（用于 git tag、日志、depends_on） |
 | `executor` | enum | | `claude-code` | 执行器类型：`claude-code` / `shell` / `judge` |
 | `prompt` | string | | `""` | 发送给 executor 的指令（支持 `{变量}` 注入） |
+| `prompt_file` | string | | `null` | 从外部文件加载 prompt（与 prompt 二选一，prompt 优先） |
 | `loop` | string | | `null` | `per_file` = 对 source_files 逐文件串行执行 |
 | `retry` | int | | 全局 `max_retries` | 该步最大重试次数 |
 | `depends_on` | string | | `null` | 前置步骤 id（声明依赖，控制执行顺序） |
@@ -337,6 +338,11 @@ modules:
 | 不要创建虚拟环境 | CC 容易卡在 `pip install`，浪费时间 |
 
 ### 通用 Prompt 原则
+
+| 规则 | 说明 |
+|------|------|
+| 长 prompt 用 `prompt_file` | YAML 内联复杂 prompt 难维护，推荐外部 Markdown 文件 |
+| `prompt_file` vs `prompt` | 两者都写时 `prompt` 优先，`prompt_file` 被忽略 |
 
 | 规则 | 说明 |
 |------|------|
