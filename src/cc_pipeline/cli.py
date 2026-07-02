@@ -37,7 +37,7 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("config", help="Path to modules.yaml")
     run_parser.add_argument("--concurrency", type=int, default=None, help="Module parallelism")
     run_parser.add_argument("--module", default=None, help="Only run specific module")
-    run_parser.add_argument("--model", default="glm-4.6", help="Claude model to use")
+    run_parser.add_argument("--model", default=None, help="Claude model (default: CC's default)")
     run_parser.add_argument("--run-dir", default=None, help="Run output directory")
     run_parser.add_argument("--daemon", action="store_true", default=False,
                             help="Run as daemon (fork to background)")
@@ -47,7 +47,7 @@ def _build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("config", help="Config YAML file path")
     resume_parser.add_argument("--run-dir", required=True, help="Run directory from previous run")
     resume_parser.add_argument("--concurrency", type=int, default=None, help="Module parallelism")
-    resume_parser.add_argument("--model", default="glm-4.6", help="Claude model to use")
+    resume_parser.add_argument("--model", default=None, help="Claude model (default: CC's default)")
 
     # status subcommand
     status_parser = subparsers.add_parser("status", help="Show pipeline status")
@@ -133,11 +133,14 @@ def _cmd_run(args) -> int:
             print(f"Module '{args.module}' not found in config", file=sys.stderr)
             return 1
 
+    # Resolve model: --model > config.model > None
+    cc_model = args.model or config.model or None
+
     # Run orchestrator (checks _shutdown_requested between modules)
     orch = Orchestrator(
         config=config,
         run_dir=str(run_dir),
-        cc_model=args.model,
+        cc_model=cc_model,
     )
 
     results = orch.run()
@@ -199,10 +202,13 @@ def _cmd_resume(args) -> int:
         print(f"  Resuming: {modules_to_run}")
 
     # Run orchestrator for remaining modules
+    # Resolve model: --model > config.model > None
+    cc_model = args.model or config.model or None
+
     orch = Orchestrator(
         config=config,
         run_dir=str(run_dir),
-        cc_model=args.model,
+        cc_model=cc_model,
         resume=True,
     )
     config.modules = [m for m in config.modules if m.name in modules_to_run]

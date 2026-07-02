@@ -18,7 +18,7 @@ class CCExecutor:
 
     def __init__(
         self,
-        model: str = "glm-4.6",
+        model: str | None = None,
         claude_path: str = "claude",
         default_timeout: int = 600,
     ):

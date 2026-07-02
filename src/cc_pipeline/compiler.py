@@ -23,6 +23,7 @@ class CompiledStep:
     output: str | None = None
     depends_on: str | None = None
     loop_file: str | None = None  # set when this is a loop expansion
+    model: str = ""  # per-step model (empty = use global)
 
 
 class PipelineCompiler:
@@ -94,6 +95,7 @@ class PipelineCompiler:
                         output=step.output,
                         depends_on=step.depends_on,
                         loop_file=filename,
+                        model=step.model,
                     ))
             else:
                 compiled.append(CompiledStep(
@@ -105,6 +107,7 @@ class PipelineCompiler:
                     rollback=step.rollback,
                     output=step.output,
                     depends_on=step.depends_on,
+                    model=step.model,
                 ))
 
         # Sort by depends_on (topological-ish)

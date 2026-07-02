@@ -15,6 +15,7 @@ class PipelineStep:
     prompt: str = ""
     command: str = ""  # shell executor uses this instead of prompt
     prompt_file: str | None = None  # load prompt from external file
+    model: str = ""  # per-step model override (empty = use global)
     loop: str | None = None  # "per_file" | None
     retry: int | None = None
     rollback: str = "git-checkpoint"
@@ -44,6 +45,7 @@ class PipelineConfig:
     concurrency: int = 5
     max_retries: int = 3
     output_branch_prefix: str = "ut-auto"
+    model: str = ""  # global default model (empty = CC decides)
     pr_labels: list[str] = field(default_factory=list)
     pr_title_template: str = ""
     pipeline: list[PipelineStep] = field(default_factory=list)
@@ -96,6 +98,7 @@ def load_config(path: str) -> PipelineConfig:
             postcondition=step_raw.get("postcondition"),
             on_complete=step_raw.get("on_complete"),
             skill=step_raw.get("skill"),
+            model=step_raw.get("model", ""),
         )
         pipeline.append(step)
     
@@ -118,6 +121,7 @@ def load_config(path: str) -> PipelineConfig:
         concurrency=raw.get("concurrency", 5),
         max_retries=raw.get("max_retries", 3),
         output_branch_prefix=raw.get("output_branch_prefix", "ut-auto"),
+        model=raw.get("model", ""),
         pr_labels=raw.get("pr_labels", []),
         pr_title_template=raw.get("pr_title_template", ""),
         pipeline=pipeline,

@@ -323,7 +323,12 @@ class ModuleRunner:
             allowed_tools = ["Read", "Bash"]  # judge is read-only
 
         try:
-            cc_result = self.cc_executor.run(
+            # Use step-level model override if set
+            executor = self.cc_executor
+            if step.model:
+                executor = CCExecutor(model=step.model)
+
+            cc_result = executor.run(
                 prompt=full_prompt,
                 cwd=self.worktree_path,
                 allowed_tools=allowed_tools,

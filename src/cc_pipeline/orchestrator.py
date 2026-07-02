@@ -29,7 +29,7 @@ class Orchestrator:
         config: PipelineConfig,
         run_dir: str,
         worktree_root: str | None = None,
-        cc_model: str = "glm-4.6",
+        cc_model: str | None = None,
         resume: bool = False,
     ):
         self.config = config

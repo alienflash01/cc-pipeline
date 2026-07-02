@@ -13,10 +13,10 @@ class TestCCExecutor:
         assert CCExecutor is not None
 
     def test_executor_constructs_with_defaults(self):
-        """CCExecutor constructs with default model."""
+        """CCExecutor constructs with no default model (CC decides)."""
         from cc_pipeline.executor import CCExecutor
         ex = CCExecutor()
-        assert ex.model is not None
+        assert ex.model is None  # None = CC uses its own default
 
     def test_executor_accepts_custom_model(self):
         """CCExecutor accepts a custom model name."""
