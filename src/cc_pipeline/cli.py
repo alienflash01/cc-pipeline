@@ -34,7 +34,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # status subcommand
     status_parser = subparsers.add_parser("status", help="Show pipeline status")
-    status_parser.add_argument("--run-id", default=None, help="Run ID")
+    status_parser.add_argument("--run-id", default=None, help="Show specific run details")
+    status_parser.add_argument("--run-dir", default=None, help="Run directory (default: ~/.cc-pipeline/runs)")
 
     args = parser.parse_args(argv)
 
@@ -168,10 +169,15 @@ def _cmd_resume(args) -> int:
 
 def _cmd_status(args) -> int:
     """Show pipeline status."""
-    if args.run_id:
-        run_dir = Path(f"~/.cc-pipeline/runs/{args.run_id}").expanduser()
+    # Use custom run_dir if provided, otherwise default
+    if args.run_dir:
+        base = Path(args.run_dir)
     else:
         base = Path("~/.cc-pipeline/runs").expanduser()
+
+    if args.run_id:
+        run_dir = base / args.run_id
+    else:
         if not base.exists():
             print("No runs found.")
             return 0
@@ -188,18 +194,36 @@ def _cmd_status(args) -> int:
         print(f"Run not found: {run_dir}")
         return 1
 
-    # Read transcripts
-    print(f"Run: {args.run_id}\n")
-    modules_dir = run_dir
-    if modules_dir.is_dir():
-        for mod_dir in sorted(modules_dir.iterdir()):
+    # Read state file for structured status
+    state_file = run_dir / "orchestrator-state.json"
+    if state_file.exists():
+        import json
+        state = json.loads(state_file.read_text())
+        modules = state.get("modules", {})
+        print(f"Run: {args.run_id}\n")
+        passed = sum(1 for m in modules.values() if m.get("status") == "passed")
+        failed = sum(1 for m in modules.values() if m.get("status") == "failed")
+        error = sum(1 for m in modules.values() if m.get("status") == "error")
+        running = sum(1 for m in modules.values() if m.get("status") == "running")
+        print(f"  Modules: {len(modules)} (passed={passed}, failed={failed}, error={error}, running={running})")
+        print()
+        for mod_name, mod_state in sorted(modules.items()):
+            status = mod_state.get("status", "?")
+            steps = f"{mod_state.get('steps_completed', 0)}/{mod_state.get('steps_total', 0)}"
+            extra = f"  {mod_state.get('pr_url', '')}" if mod_state.get("pr_url") else ""
+            error_detail = f"  error={mod_state.get('error', '')[:60]}" if mod_state.get("error") else ""
+            print(f"  {mod_name:20s}  {status:8s}  steps={steps}{extra}{error_detail}")
+    else:
+        # Fallback to reading transcripts
+        print(f"Run: {args.run_id}\n")
+        for mod_dir in sorted(run_dir.iterdir()):
             if not mod_dir.is_dir():
                 continue
             transcript = mod_dir / "transcript.jsonl"
             if transcript.exists():
+                import json
                 lines = transcript.read_text().strip().split("\n")
                 if lines and lines[0]:
-                    import json
                     last = json.loads(lines[-1])
                     print(f"  {mod_dir.name:20s}  last_event={last.get('event', '?')}  step={last.get('step', '?')}")
 
