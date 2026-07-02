@@ -26,8 +26,9 @@
 |------|------|:----:|--------|------|
 | `id` | string | ✅ | — | 步骤唯一标识（用于 git tag、日志、depends_on） |
 | `executor` | enum | | `claude-code` | 执行器类型：`claude-code` / `shell` / `judge` |
-| `prompt` | string | | `""` | 发送给 executor 的指令（支持 `{变量}` 注入） |
-| `prompt_file` | string | | `null` | 从外部文件加载 prompt（与 prompt 二选一，prompt 优先） |
+| `prompt` | string | | `""` | CC/judge 的自然语言指令（支持 `{变量}` 注入） |
+| `command` | string | | `""` | shell executor 的 bash 命令（支持 `{变量}` 注入） |
+| `prompt_file` | string | | `null` | 从外部文件加载 prompt/command（与 prompt/command 二选一） |
 | `loop` | string | | `null` | `per_file` = 对 source_files 逐文件串行执行 |
 | `retry` | int | | 全局 `max_retries` | 该步最大重试次数 |
 | `depends_on` | string | | `null` | 前置步骤 id（声明依赖，控制执行顺序） |
@@ -37,11 +38,11 @@
 
 ### Executor 类型详解
 
-| Executor | prompt 行为 | 信任度 | 典型用途 |
-|---------|------------|--------|---------|
-| `claude-code` | 注入上下文 + output 指令 | ❌ 不可信 | 生成代码/测试/文档 |
-| `shell` | 原始命令，不注入 | ✅ 可信 | 编译/测试/lint/覆盖率 |
-| `judge` | 注入上下文，只读权限 | 🔶 半可信 | AI 质量评测/审查 |
+| 类型 | 用法 | prompt 行为 | 信任度 | 典型用途 |
+|---------|------------|--------|------|---------|
+| `claude-code` | `prompt: "..."` | 注入上下文 + output 指令 | ❌ 不可信 | 生成代码/测试/文档 |
+| `shell` | `command: "..."` | 原始命令，不注入 | ✅ 可信 | 编译/测试/lint/覆盖率 |
+| `judge` | `prompt: "..."` | 注入上下文，只读权限 | 🔶 半可信 | AI 质量评测/审查 |
 
 **关键区别：**
 - `claude-code` 和 `judge`：自动注入 `.pipeline/*.json` + `progress.md` 到 prompt
@@ -220,7 +221,7 @@ pipeline:
 
   - id: score
     executor: shell
-    prompt: "/usr/bin/python3 score.py reviews/{module}/analysis.json > .pipeline/score.json"
+    command: "/usr/bin/python3 score.py reviews/{module}/analysis.json > .pipeline/score.json"
     postcondition:
       shell: "test -f .pipeline/score.json"
     depends_on: analyze
