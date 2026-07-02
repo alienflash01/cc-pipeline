@@ -84,8 +84,16 @@ def load_config(path: str) -> PipelineConfig:
         raise ValueError("Missing required field: pipeline (or empty list)")
     
     # Parse pipeline steps
+    _KNOWN_STEP_FIELDS = {"id", "executor", "prompt", "command", "prompt_file", "model",
+                          "loop", "retry", "rollback", "output", "depends_on",
+                          "postcondition", "on_complete", "skill", "timeout"}
     pipeline = []
     for step_raw in raw["pipeline"]:
+        # Warn on unknown fields
+        import warnings as _w
+        for key in step_raw:
+            if key not in _KNOWN_STEP_FIELDS:
+                _w.warn(f"Unknown field '{key}' in step '{step_raw.get('id','?')}' — ignored", stacklevel=2)
         step = PipelineStep(
             id=step_raw["id"],
             executor=step_raw.get("executor", "claude-code"),

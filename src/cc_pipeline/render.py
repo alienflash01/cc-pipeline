@@ -50,7 +50,8 @@ def render(
             else:
                 result.append(f"[file not found: {var_name}]")
         elif var_name in variables:
-            result.append(str(variables[var_name]))
+            val = variables[var_name]
+            result.append("" if val is None else str(val))
         else:
             raise KeyError(f"Unknown variable: {{{var_name}}}")
         

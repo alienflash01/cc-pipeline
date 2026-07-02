@@ -717,6 +717,167 @@ executor=step_raw.get("executor", "claude-code"),
 
 ---
 
+## 十、第三轮拷打（变异测试 + 故障注入 + 修复验证 + 残留 bug）
+
+> 方法：18 组变异测试（67% 变异得分）、30+ 组故障注入/并发/幂等/Git 腐败/API 契约/编码攻击、修复回归验证
+> 注：审计期间代码被外部 commit 了 3 次修复（fb34584 / d2bca35 / 9b44adf），以下发现基于修复后的代码
+
+---
+
+### 变异测试存活清单（67% 变异得分，6/18 存活）
+
+| 变异 | 存活 | 含义 |
+|---|:-:|---|
+| CC timeout 600 → 999999 | ❌ | 无测试验证超时值 |
+| `--dangerously-skip-permissions` 删除 | ❌ | 无测试验证 CC 命令行参数完整性 |
+| 默认 concurrency 5 → 1 | ❌ | 无测试验证默认值 |
+| 默认 max_retries 3 → 0 | ❌ | 无测试验证默认 retry 值 |
+| `tag -f` 改为 `tag`（不覆盖） | ❌ | 无测试验证 tag 覆盖语义 |
+| `ensure_ascii=False` → `True` | ❌ | 无测试验证 Unicode 日志输出 |
+
+---
+
+### #49 🟡 P1 — error message 报 "N attempts" 但实际执行 N+1 次
+
+**位置：** `runner.py:223`
+
+```python
+"error": f"Step '{step.step_id}' failed after {step.retry} attempts",
+```
+
+修复后 `retry_budget > 0` 使得 retry=N 执行 N+1 次。但 error message 仍报 `step.retry` 次。
+
+| retry 配置 | 实际执行 | error message 报告 |
+|:-:|:-:|:-:|
+| retry=1 | 2 次 | "failed after 1 attempts" |
+| retry=3 | 4 次 | "failed after 3 attempts" |
+
+**验证确认。** retry 语义已修复（N+1 次执行），但错误消息仍然 off-by-one。
+
+---
+
+### #50 🟡 P1 — `output` 路径穿越未校验（修复后仍存在）
+
+**位置：** `runner.py:267-270`
+
+```python
+if step.output:
+    prompt += (
+        f"\n\n---\n请将本次执行的关键信息...以 JSON 格式写入 .pipeline/{step.output}"
+    )
+```
+
+`step.output = "../../../etc/crontab"` → 注入到 CC prompt → CC 可写到 worktree 外的任意路径。
+
+**验证确认：** prompt 中包含 `../../../tmp/ccpipe_r4_traversal.json` — 路径穿越未被校验。
+
+---
+
+### #51 🟡 P1 — `StateManager.load()` 损坏 JSON 仍崩溃（修复后仍存在）
+
+**位置：** `state.py:44-45`
+
+**验证确认：** 写入 `{"broken` → `StateManager.load()` 直接抛 `JSONDecodeError`，未被捕获。
+
+---
+
+### #52 🟡 P1 — rate_limit 仍用简单 substring 匹配（修复后仍存在）
+
+**位置：** `runner.py:59`
+
+**验证确认：** `"429"` 和 `"rate_limit"` 仍是简单 substring 匹配，无 word boundary。`"Port 4290 not available"` → 误判为 rate limited。
+
+---
+
+### #53 🟡 P2 — WorktreeManager._lock 不跨实例共享
+
+**位置：** `worktree.py:25`
+
+两个 `WorktreeManager` 实例各有自己的 `_lock`，但操作同一个 git repo。同一 module 的并发 worktree 创建：一个实例的 lock 不阻塞另一个实例 → git refdb 竞态。
+
+**验证确认：** 同 module 并发创建触发 `CalledProcessError: exit 255`（git worktree add 冲突）。
+
+---
+
+### #54 🟡 P2 — Logger 双线程写同一文件 — 无锁
+
+**位置：** `logger.py:28`
+
+**验证确认：** 两个 Logger 实例各写 50 行 → 总行数 100（O_APPEND 原子性在小行数下可靠），但单行 > 4096 bytes（PIPE_BUF）时可能交错。
+
+---
+
+### #55 🟡 P2 — 未知 YAML 字段静默忽略
+
+**位置：** `config.py:load_config`
+
+`unknown_top_level`、`unknown_step_field`、`unknown_module_field` 等不存在的 YAML 键被静默忽略。用户拼写错误（如 `comand:` 代替 `command:`）不会报错。
+
+---
+
+### #56 🟡 P2 — `render()` 把 None 转为字符串 `"None"`
+
+**位置：** `render.py:50`
+
+```python
+result.append(str(variables[var_name]))  # str(None) = "None"
+```
+
+如果 module 的 `spec_id` 或其他字段为 `None`，prompt 中会出现字面字符串 `"None"` 而非空串。
+
+---
+
+### #57 🟢 P3 — `--dangerously-skip-permissions` 无测试验证
+
+变异测试确认：删除 `--dangerously-skip-permissions` 参数后 343 测试全绿。CC 执行的安全参数完全无测试覆盖。
+
+---
+
+### #58 🟢 P3 — `tag -f` 覆盖语义无测试验证
+
+变异测试确认：将 `tag -f` 改为 `tag`（不覆盖）后测试全绿。同一 step 多次 attempt 的 tag 覆盖语义未被测试。
+
+---
+
+### 修复验证结果（6 个原始 P0/P1 的修复状态）
+
+| 原 # | 问题 | 修复状态 |
+|:-:|---|:-:|
+| #1 | signal handler 死代码 | ✅ 已修复 |
+| #2 | retry=1 零重试 | ✅ 已修复（改为 >0，但 message 仍有 #49） |
+| #33 | command/prompt_file 未加载 | ✅ 已修复 |
+| #34 | JSON boolean/null 比较 | ✅ 已修复 |
+| #7 | tag 无 loop_file 区分 | ✅ 已修复 |
+| #20 | 循环依赖不检测 | ✅ 已修复 |
+| #35 | 重复 module name | ✅ 已修复 |
+| #36 | 负数 concurrency | ✅ 已修复 |
+| #41 | StateManager 损坏 JSON | ❌ 仍存在（#51） |
+| #50 | output 路径穿越 | ❌ 仍存在（#50） |
+| #13 | rate_limit 误报 | ❌ 仍存在（#52） |
+
+---
+
+### 第三轮汇总
+
+| # | 严重度 | 问题 | 来源 |
+|---|:-:|---|---|
+| 49 | 🟡 P1 | error message "N attempts" ≠ 实际 N+1 次 | retry 验证 |
+| 50 | 🟡 P1 | output 路径穿越未校验（修复后残留） | 编码攻击 |
+| 51 | 🟡 P1 | StateManager 损坏 JSON 仍崩溃（修复后残留） | 故障注入 |
+| 52 | 🟡 P1 | rate_limit substring 误报（修复后残留） | 变异验证 |
+| 53 | 🟡 P2 | WorktreeManager._lock 不跨实例 | 并发测试 |
+| 54 | 🟡 P2 | Logger 双线程无锁 | 线程安全 |
+| 55 | 🟡 P2 | 未知 YAML 字段静默忽略 | 对抗 YAML |
+| 56 | 🟡 P2 | render(None) → "None" 而非空串 | 边界测试 |
+| 57 | 🟢 P3 | --dangerously-skip-permissions 无测试 | 变异测试 |
+| 58 | 🟢 P3 | tag -f 覆盖语义无测试 | 变异测试 |
+
+**第三轮新增：10 条 — 0 个 P0 / 4 个 P1 / 4 个 P2 / 2 个 P3**
+
+---
+
 ## 全量汇总
 
-**总计：48 条 — 6 个 P0 / 20 个 P1 / 16 个 P2 / 6 个 P3**
+**总计：58 条 — 6 个 P0 / 24 个 P1 / 20 个 P2 / 8 个 P3**
+
+（其中 11 个原始 bug 已被外部修复，实际现存残留：47 条 — 0 个 P0 / 16 个 P1 / 16 个 P2 / 8 个 P3）

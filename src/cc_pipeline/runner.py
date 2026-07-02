@@ -10,6 +10,7 @@ Implements CO-style layered error handling:
 from __future__ import annotations
 
 import subprocess
+import re
 import time as _time_mod
 from dataclasses import dataclass
 from enum import Enum
@@ -55,15 +56,20 @@ class RunnerResult:
     error: str = ""
 
 
-RATE_LIMIT_PATTERNS = ["429", "rate_limit", "rate limit", "too many requests", "1302"]
+RATE_LIMIT_PATTERNS = [
+    r"\b429\b",
+    r"\brate[ _-]?limit\b",
+    r"\btoo many requests\b",
+    r"\b1302\b",
+]
+_RATE_LIMIT_RE = re.compile("|".join(RATE_LIMIT_PATTERNS), re.IGNORECASE)
 
 
 def _is_rate_limited(stderr: str) -> bool:
-    """Check if stderr indicates a rate limit error."""
-    lower = stderr.lower()
-    return any(p in lower for p in RATE_LIMIT_PATTERNS)
-
-
+    """Check if stderr indicates rate limiting (word-boundary match)."""
+    if not stderr:
+        return False
+    return bool(_RATE_LIMIT_RE.search(stderr))
 def _is_zero_work(cc_result: CCResult) -> bool:
     """Detect CC that exited without producing meaningful output."""
     return (
@@ -218,7 +224,7 @@ class ModuleRunner:
                     "module": self.module_name,
                     "steps_completed": completed,
                     "steps_total": total,
-                    "error": f"Step '{step.step_id}' failed after {step.retry} attempts",
+                    "error": f"Step '{step.step_id}' failed after {step.retry + 1} attempts",
                 }
 
         return {
@@ -267,9 +273,11 @@ class ModuleRunner:
 
         # Inject output write instruction
         if step.output:
+            # Sanitize: strip path traversal and slashes
+            safe_output = step.output.replace("..", "").replace("/", "").replace("\\", "")
             prompt += (
                 "\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
-                f"以 JSON 格式写入 .pipeline/{step.output}"
+                f"以 JSON 格式写入 .pipeline/{safe_output}"
             )
 
         return prompt
