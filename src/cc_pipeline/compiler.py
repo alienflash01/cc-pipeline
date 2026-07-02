@@ -113,15 +113,23 @@ class PipelineCompiler:
         return compiled
 
     def _resolve_prompt(self, step: PipelineStep) -> str:
-        """Return the effective prompt, resolving prompt_file if set.
+        """Return the effective prompt/command for a step.
 
         Rules:
-          1. If prompt is set (non-empty), use it directly.
-          2. Otherwise if prompt_file is set, read that file.
-          3. If neither, return empty string.
+          1. Shell executor: use step.command if set, then step.prompt, then prompt_file.
+          2. CC/judge executor: use step.prompt if set, then prompt_file.
+          3. prompt_file is loaded from disk if both prompt and command are empty.
         """
+        if step.executor == "shell":
+            if step.command:
+                return step.command
+            if step.prompt:
+                return step.prompt
+
+        # CC / judge
         if step.prompt:
             return step.prompt
+
         if step.prompt_file:
             path = Path(step.prompt_file)
             if not path.exists():

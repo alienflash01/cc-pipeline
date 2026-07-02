@@ -13,6 +13,7 @@ class PipelineStep:
     id: str
     executor: str  # "claude-code" | "shell" | "judge"
     prompt: str = ""
+    command: str = ""  # shell executor uses this instead of prompt
     prompt_file: str | None = None  # load prompt from external file
     loop: str | None = None  # "per_file" | None
     retry: int | None = None
