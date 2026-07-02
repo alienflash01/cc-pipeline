@@ -42,3 +42,11 @@ class Logger:
     def log_retry(self, step: str, attempt: int, reason: str) -> None:
         """Log a retry event."""
         self.event("retry", step=step, attempt=attempt, reason=reason)
+
+    def log_prompt(self, step: str, prompt: str) -> None:
+        """Log the full CC prompt sent for a step (truncated to 2000 chars).
+
+        Lets failed runs be reproduced/audited — the exact instruction handed
+        to Claude Code is preserved in the transcript.
+        """
+        self.event("cc_prompt", step=step, prompt=prompt[:2000])

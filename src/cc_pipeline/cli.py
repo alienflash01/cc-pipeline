@@ -59,6 +59,10 @@ def _build_parser() -> argparse.ArgumentParser:
     stop_parser.add_argument("--force", action="store_true", default=False,
                              help="Force stop (SIGKILL instead of SIGTERM)")
 
+    # report subcommand
+    report_parser = subparsers.add_parser("report", help="Generate Markdown run report")
+    report_parser.add_argument("--run-dir", required=True, help="Run directory to report on")
+
     return parser
 
 
@@ -81,6 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_status(args)
     if args.command == "stop":
         return _cmd_stop(args)
+    if args.command == "report":
+        return _cmd_report(args)
 
     return 0
 
@@ -338,6 +344,212 @@ def _cmd_stop(args) -> int:
         if pid_file.exists():
             pid_file.unlink()
 
+    return 0
+
+
+# --- report helpers ---------------------------------------------------------
+
+# Bookkeeping pseudo-steps that are not real pipeline stages.
+_PSEUDO_STEPS = {"resume_skip", "pr_creation"}
+
+
+def _parse_iso(ts):
+    """Parse an ISO-8601 timestamp into a datetime, or None on failure."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def _duration_seconds(start_ts, end_ts):
+    """Return elapsed seconds between two ISO timestamps, or '?' if unknown."""
+    start = _parse_iso(start_ts)
+    end = _parse_iso(end_ts)
+    if start and end:
+        return round((end - start).total_seconds(), 1)
+    return "?"
+
+
+def _parse_transcript(transcript_path):
+    """Parse a module's transcript.jsonl into structured step outcomes.
+
+    Returns:
+        (steps, step_order, first_ts, last_ts, events)
+        steps: {step_id: {status, attempt, reason}} (status in PASS/FAIL/?)
+        step_order: step_ids in order of first appearance (pseudo-steps excluded)
+        first_ts / last_ts: ISO timestamps bracketing the run (or None)
+        events: list of all parsed entries
+    """
+    steps: dict = {}
+    step_order: list[str] = []
+    first_ts = None
+    last_ts = None
+    events: list = []
+
+    if not transcript_path.exists():
+        return steps, step_order, first_ts, last_ts, events
+
+    try:
+        raw = transcript_path.read_text()
+    except OSError:
+        return steps, step_order, first_ts, last_ts, events
+
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = _json.loads(line)
+        except (_json.JSONDecodeError, ValueError):
+            continue  # skip corrupt lines, keep the rest
+        events.append(entry)
+
+        ts = entry.get("ts")
+        if ts:
+            if first_ts is None:
+                first_ts = ts
+            last_ts = ts
+
+        step = entry.get("step")
+        if not step or step in _PSEUDO_STEPS:
+            continue
+
+        if step not in step_order:
+            step_order.append(step)
+        if step not in steps:
+            steps[step] = {"status": "?", "attempt": entry.get("attempt", 1), "reason": ""}
+
+        event = entry.get("event")
+        if event == "step_start":
+            steps[step]["attempt"] = entry.get("attempt", steps[step]["attempt"])
+        elif event == "pass":
+            info = entry.get("info") or {}
+            reason = info.get("reason", "") if isinstance(info, dict) else ""
+            steps[step] = {
+                "status": "PASS",
+                "attempt": entry.get("attempt", 1),
+                "reason": reason,
+            }
+        elif event == "fail":
+            steps[step] = {
+                "status": "FAIL",
+                "attempt": entry.get("attempt", 1),
+                "reason": entry.get("reason", ""),
+            }
+        elif event == "retry":
+            steps[step]["attempt"] = entry.get("attempt", steps[step]["attempt"])
+            steps[step]["reason"] = entry.get("reason", steps[step]["reason"])
+
+    return steps, step_order, first_ts, last_ts, events
+
+
+def _build_report(run_id: str, timestamp: str, modules: dict, run_dir: Path) -> str:
+    """Assemble the Markdown report body from state + transcripts."""
+    total = len(modules)
+    passed = sum(1 for m in modules.values() if m.get("status") == "passed")
+    failed = sum(1 for m in modules.values() if m.get("status") != "passed")
+    # Drop trailing .0 for whole numbers: 50.0 -> "50", 33.3 -> "33.3".
+    rate = f"{round(passed / total * 100, 1):g}" if total else "0"
+
+    lines: list[str] = []
+    lines.append("# Pipeline Run Report")
+    lines.append("")
+    lines.append(f"**Run ID:** {run_id}")
+    lines.append(f"**Generated:** {timestamp}")
+    lines.append("")
+
+    lines.append("## Summary")
+    lines.append("")
+    lines.append("| Metric | Value |")
+    lines.append("|--------|-------|")
+    lines.append(f"| Modules | {total} |")
+    lines.append(f"| Passed | {passed} |")
+    lines.append(f"| Failed | {failed} |")
+    lines.append(f"| Success Rate | {rate}% |")
+    lines.append("")
+
+    lines.append("## Module Details")
+    lines.append("")
+    for mod_name in sorted(modules):
+        lines.append(f"### {mod_name}")
+        lines.append("")
+        steps, step_order, first_ts, last_ts, _events = _parse_transcript(
+            run_dir / mod_name / "transcript.jsonl"
+        )
+        lines.append("| Step | Status | Attempt | Reason |")
+        lines.append("|------|--------|---------|--------|")
+        for step_id in step_order:
+            s = steps[step_id]
+            lines.append(f"| {step_id} | {s['status']} | {s['attempt']} | {s['reason']} |")
+        lines.append("")
+        duration = _duration_seconds(first_ts, last_ts)
+        lines.append(f"**Duration:** {first_ts or 'N/A'} → {last_ts or 'N/A'} ({duration}s)")
+        lines.append("")
+
+    failed_mods = [n for n, m in modules.items() if m.get("status") != "passed"]
+    if failed_mods:
+        lines.append("## Failed Modules")
+        lines.append("")
+        for mod_name in sorted(failed_mods):
+            lines.append(f"### {mod_name}")
+            lines.append("")
+            steps, _order, _first, _last, events = _parse_transcript(
+                run_dir / mod_name / "transcript.jsonl"
+            )
+            last_event = events[-1].get("event", "?") if events else "?"
+
+            reason = ""
+            for e in reversed(events):
+                if e.get("reason"):
+                    reason = e["reason"]
+                    break
+            if not reason:
+                reason = modules[mod_name].get("error", "N/A")
+
+            stdout_summary = ""
+            for e in events:
+                candidate = e.get("stdout")
+                if not candidate:
+                    info = e.get("info")
+                    if isinstance(info, dict):
+                        candidate = info.get("stdout", "")
+                if candidate:
+                    stdout_summary = str(candidate)[:200]
+                    break
+
+            lines.append(f"- Last event: {last_event}")
+            lines.append(f"- Reason: {reason}")
+            lines.append(f"- CC stdout summary: {stdout_summary}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _cmd_report(args) -> int:
+    """Generate a Markdown run report from state + transcripts."""
+    run_dir = Path(args.run_dir)
+    state_file = run_dir / "orchestrator-state.json"
+
+    if not state_file.exists():
+        print(f"State file not found: {state_file}", file=sys.stderr)
+        return 1
+
+    try:
+        state = _json.loads(state_file.read_text())
+    except (_json.JSONDecodeError, ValueError) as e:
+        print(f"State file is corrupt or unreadable: {e}", file=sys.stderr)
+        return 1
+
+    run_id = state.get("run_id", run_dir.name)
+    modules = state.get("modules", {})
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    report = _build_report(run_id, timestamp, modules, run_dir)
+
+    print(report)
+    (run_dir / "report.md").write_text(report)
     return 0
 
 

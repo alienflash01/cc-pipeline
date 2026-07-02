@@ -333,6 +333,10 @@ class ModuleRunner:
         if step.executor == "judge":
             allowed_tools = ["Read", "Bash"]  # judge is read-only
 
+        # Record the exact prompt handed to CC (truncated) before execution,
+        # so a failed/hung run can still be audited.
+        self.logger.log_prompt(step=step.step_id, prompt=full_prompt)
+
         try:
             # Use step-level model override if set
             executor = self.cc_executor
