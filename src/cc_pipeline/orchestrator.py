@@ -153,7 +153,17 @@ class Orchestrator:
             wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref)
 
             # Find the module config
-            module = next(m for m in self.config.modules if m.name == module_name)
+            module = None
+            for m in self.config.modules:
+                if m.name == module_name:
+                    module = m
+                    break
+            if module is None:
+                return {
+                    "status": "error",
+                    "module": module_name,
+                    "error": f"Module '{module_name}' not found in config.modules",
+                }
             branch = f"{self.config.output_branch_prefix}/{module_name}"
 
             # Save initial state
@@ -220,8 +230,10 @@ class Orchestrator:
                     if pr_url:
                         state.update_module(module_name, pr_url=pr_url)
                         result["pr_url"] = pr_url
-                except Exception:
-                    pass  # PR creation is best-effort
+                except Exception as e:
+                    import json as _pr_json
+                    with open(Path(str(self.run_dir)) / module_name / "transcript.jsonl", "a") as _pf:
+                        _pf.write(_pr_json.dumps({"event": "pr_error", "module": module_name, "error": str(e)}) + "\n")
 
                 self.worktree_mgr.cleanup(module_name)
             else:

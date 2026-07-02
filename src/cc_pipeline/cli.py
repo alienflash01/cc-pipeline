@@ -200,7 +200,9 @@ def _cmd_resume(args) -> int:
         print(f"  Skipping passed: {sorted(passed_modules)}")
         print(f"  Resuming: {modules_to_run}")
 
-    # Run orchestrator for remaining modules
+    # Filter modules BEFORE Orchestrator construction
+    config.modules = [m for m in config.modules if m.name in modules_to_run]
+
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
 
@@ -210,7 +212,6 @@ def _cmd_resume(args) -> int:
         cc_model=cc_model,
         resume=True,
     )
-    config.modules = [m for m in config.modules if m.name in modules_to_run]
 
     results = orch.run()
 
@@ -261,7 +262,11 @@ def _cmd_status(args) -> int:
     state_file = run_dir / "orchestrator-state.json"
     if state_file.exists():
         import json
-        state = json.loads(state_file.read_text())
+        try:
+            state = json.loads(state_file.read_text())
+        except (json.JSONDecodeError, KeyError):
+            print("State file is corrupt or unreadable. Check transcripts manually.")
+            return 1
         modules = state.get("modules", {})
         print(f"Run: {args.run_id}\n")
         passed = sum(1 for m in modules.values() if m.get("status") == "passed")

@@ -41,8 +41,11 @@ class StateManager:
         with self._lock:
             if not self.state_file.exists():
                 return None
-            with open(self.state_file) as f:
-                return json.load(f)
+            try:
+                with open(self.state_file) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                return None
 
     def update_module(self, module_name: str, **kwargs) -> None:
         """Update a single module's state fields.

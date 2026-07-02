@@ -157,9 +157,20 @@ class PipelineCompiler:
         return result
 
     def _sort_by_dependencies(self, steps: list[CompiledStep]) -> list[CompiledStep]:
-        """Reorder steps so that depends_on targets come first."""
-        # Build a simple stable sort: steps without depends_on first, then
-        # steps whose depends_on has already appeared.
+        """Reorder steps so that depends_on targets come first.
+
+        Raises ValueError on circular dependencies or dangling depends_on.
+        """
+        all_ids = {s.step_id for s in steps}
+
+        # Check for dangling depends_on
+        for step in steps:
+            if step.depends_on and step.depends_on not in all_ids:
+                raise ValueError(
+                    f"Step '{step.step_id}' depends_on '{step.depends_on}' "
+                    f"which does not exist"
+                )
+
         result: list[CompiledStep] = []
         remaining = list(steps)
         placed_ids: set[str] = set()
@@ -174,8 +185,9 @@ class PipelineCompiler:
                     progressed = True
                     break
             if not progressed:
-                # Circular or unresolvable dependency — append as-is
-                result.extend(remaining)
-                break
+                remaining_names = [s.step_id for s in remaining]
+                raise ValueError(
+                    f"Circular dependency detected among steps: {remaining_names}"
+                )
 
         return result

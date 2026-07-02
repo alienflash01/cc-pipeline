@@ -120,12 +120,16 @@ def load_config(path: str) -> PipelineConfig:
     # Validate module names (security: prevent command injection)
     import re as _re
     _SAFE_NAME = _re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_\-]*$")
+    seen_names = set()
     for mod in modules:
         if not _SAFE_NAME.match(mod.name):
             raise ValueError(
                 f"Invalid module name '{mod.name}': only alphanumeric, underscore, "
-                f"and hyphen allowed (no shell metacharacters)"
+                f"and hyphen allowed (no shell metacharacters or slashes)"
             )
+        if mod.name in seen_names:
+            raise ValueError(f"Duplicate module name '{mod.name}'")
+        seen_names.add(mod.name)
 
     # Validate output fields (security: prevent path traversal)
     for step in pipeline:
@@ -133,6 +137,22 @@ def load_config(path: str) -> PipelineConfig:
             raise ValueError(
                 f"Invalid output '{step.output}': no path traversal or slashes allowed"
             )
+
+    # Validate numeric fields
+    concurrency = raw.get("concurrency", 5)
+    max_retries = raw.get("max_retries", 3)
+    if not isinstance(concurrency, int) or concurrency < 1:
+        raise ValueError(f"concurrency must be a positive integer, got: {concurrency}")
+    if not isinstance(max_retries, int) or max_retries < 0:
+        raise ValueError(f"max_retries must be a non-negative integer, got: {max_retries}")
+
+    # Warn about unimplemented fields
+    import warnings as _warnings
+    for step in pipeline:
+        if step.on_complete:
+            _warnings.warn(f"Step '{step.id}': on_complete field is not yet implemented, ignored", stacklevel=2)
+        if step.skill:
+            _warnings.warn(f"Step '{step.id}': skill field is not yet implemented, ignored", stacklevel=2)
 
     return PipelineConfig(
         repo=raw["repo"],

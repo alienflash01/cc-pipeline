@@ -121,7 +121,6 @@ class ModuleRunner:
             extra_retries = 0  # rate-limit retries (free, don't consume budget)
 
             while True:
-                attempt_num = retry_budget - step.retry + extra_retries + 1 if step.retry > 0 else 1
                 current_attempt = step.retry - retry_budget + 1 + extra_retries
                 if current_attempt < 1:
                     current_attempt = 1
