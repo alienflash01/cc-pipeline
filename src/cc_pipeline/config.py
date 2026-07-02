@@ -44,6 +44,8 @@ class PipelineConfig:
     concurrency: int = 5
     max_retries: int = 3
     output_branch_prefix: str = "ut-auto"
+    pr_labels: list[str] = field(default_factory=list)
+    pr_title_template: str = ""
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
 
@@ -116,6 +118,8 @@ def load_config(path: str) -> PipelineConfig:
         concurrency=raw.get("concurrency", 5),
         max_retries=raw.get("max_retries", 3),
         output_branch_prefix=raw.get("output_branch_prefix", "ut-auto"),
+        pr_labels=raw.get("pr_labels", []),
+        pr_title_template=raw.get("pr_title_template", ""),
         pipeline=pipeline,
         modules=modules,
     )
