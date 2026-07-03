@@ -60,8 +60,12 @@ def _build_parser() -> argparse.ArgumentParser:
                              help="Force stop (SIGKILL instead of SIGTERM)")
 
     # report subcommand
-    report_parser = subparsers.add_parser("report", help="Generate Markdown run report")
+    report_parser = subparsers.add_parser("report", help="Generate a run report")
     report_parser.add_argument("--run-dir", required=True, help="Run directory to report on")
+    report_parser.add_argument("--format", choices=["md", "html"], default="md",
+                               help="Report format (default: md)")
+    report_parser.add_argument("--config", default=None,
+                               help="Config YAML (needed for the DAG in --format html)")
 
     return parser
 
@@ -528,7 +532,7 @@ def _build_report(run_id: str, timestamp: str, modules: dict, run_dir: Path) -> 
 
 
 def _cmd_report(args) -> int:
-    """Generate a Markdown run report from state + transcripts."""
+    """Generate a run report (Markdown or HTML) from state + transcripts."""
     run_dir = Path(args.run_dir)
     state_file = run_dir / "orchestrator-state.json"
 
@@ -545,11 +549,41 @@ def _cmd_report(args) -> int:
     run_id = state.get("run_id", run_dir.name)
     modules = state.get("modules", {})
 
+    if args.format == "html":
+        return _write_html_report(args, run_dir, state, run_id, modules)
+
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     report = _build_report(run_id, timestamp, modules, run_dir)
 
     print(report)
     (run_dir / "report.md").write_text(report)
+    return 0
+
+
+def _write_html_report(args, run_dir: Path, state: dict, run_id: str, modules: dict) -> int:
+    """Generate a self-contained HTML report (with DAG + collapsible CC prompts)."""
+    from cc_pipeline.report_html import build_html_report
+
+    # Collect parsed transcript events per module (reuses the robust jsonl parser).
+    transcripts: dict = {}
+    for mod_name in modules:
+        _, _, _, _, events = _parse_transcript(run_dir / mod_name / "transcript.jsonl")
+        transcripts[mod_name] = events
+
+    # Pull the pipeline definition from config.yaml (optional — no DAG without it).
+    pipeline_def: list = []
+    if getattr(args, "config", None):
+        from cc_pipeline.config import load_config
+        cfg = load_config(args.config)
+        pipeline_def = [
+            {"id": s.id, "executor": s.executor, "depends_on": s.depends_on, "loop": s.loop}
+            for s in cfg.pipeline
+        ]
+
+    report = build_html_report(state, transcripts, pipeline_def, run_id)
+    out_path = run_dir / "report.html"
+    out_path.write_text(report)
+    print(f"Report written to {out_path}")
     return 0
 
 
