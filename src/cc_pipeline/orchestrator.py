@@ -37,9 +37,9 @@ class Orchestrator:
         self.resume = resume
         self.concurrency = config.concurrency
         self.run_id = "unknown"  # set by CLI
-        # Default worktree root under run_dir to avoid cross-test conflicts
+        # Worktree root: explicit arg > config.worktree_root > run_dir/worktrees
         if worktree_root is None:
-            worktree_root = str(self.run_dir / "worktrees")
+            worktree_root = config.worktree_root if config.worktree_root else str(self.run_dir / "worktrees")
         self.worktree_mgr = WorktreeManager(
             repo_path=config.repo,
             base_branch=config.base_branch,

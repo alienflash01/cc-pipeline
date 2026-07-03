@@ -26,6 +26,21 @@ class PipelineStep:
     timeout: int | None = None
 
 
+def _resolve_worktree_root(worktree_root: str, repo: str) -> str:
+    """Resolve worktree_root: absolute path as-is, relative path resolved against repo dir.
+
+    For worktree_root: ../wt with repo=/A/B → resolves to /A/wt (sibling of repo).
+    """
+    if not worktree_root:
+        return ""
+    from pathlib import Path
+    p = Path(worktree_root)
+    if p.is_absolute():
+        return str(p)
+    # Relative to repo directory itself
+    return str((Path(repo) / p).resolve())
+
+
 @dataclass
 class Module:
     """A task module to process. Generic — no UT-specific fields."""
@@ -45,6 +60,7 @@ class PipelineConfig:
     max_retries: int = 3
     output_branch_prefix: str = "ut-auto"
     model: str = ""  # global default model (empty = CC decides)
+    worktree_root: str = ""  # where to create worktrees (empty = framework decides)
     pr_labels: list[str] = field(default_factory=list)
     pr_title_template: str = ""
     pipeline: list[PipelineStep] = field(default_factory=list)
@@ -219,6 +235,7 @@ def load_config(path: str) -> PipelineConfig:
         max_retries=raw.get("max_retries", 3),
         output_branch_prefix=raw.get("output_branch_prefix", "ut-auto"),
         model=raw.get("model", ""),
+        worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
         pr_labels=raw.get("pr_labels", []),
         pr_title_template=raw.get("pr_title_template", ""),
         pipeline=pipeline,
