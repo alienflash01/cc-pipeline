@@ -121,8 +121,8 @@ class TestConfigLoader:
         """coverage thresholds are integers."""
         from cc_pipeline.config import load_config
         config = load_config(str(tmp_yaml(VALID_YAML)))
-        assert config.modules[0].coverage["line_threshold"] == 80
-        assert isinstance(config.modules[0].coverage["line_threshold"], int)
+        assert config.modules[0].variables["line_threshold"] == 80
+        assert isinstance(config.modules[0].variables["line_threshold"], int)
 
     def test_module_variables_parsed(self, tmp_yaml):
         """module-level variables are parsed."""

@@ -24,7 +24,7 @@ class TestStepModelField:
             model="glm-4.6",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert config.model == "glm-4.6"
 
@@ -33,7 +33,7 @@ class TestStepModelField:
             repo="/tmp",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert config.model == ""
 
@@ -53,7 +53,7 @@ class TestModelResolution:
                 prompt="test", model="deepseek-v4-pro",
             )],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("auth")
@@ -70,7 +70,7 @@ class TestModelResolution:
                 prompt="test",
             )],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         compiler = PipelineCompiler(config)
         steps = compiler.compile_module("auth")

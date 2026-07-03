@@ -52,7 +52,7 @@ class TestSmokeIntegration:
             "source_dir": mod.source_dir,
             "spec_id": mod.spec_id,
             **mod.variables,
-            **{f"{k}": v for k, v in mod.coverage.items()},
+            **{f"{k}": v for k, v in mod.variables.items()},
         }
 
         step = config.pipeline[0]

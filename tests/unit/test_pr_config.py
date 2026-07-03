@@ -18,7 +18,7 @@ class TestPRConfig:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         assert config.pr_labels == []
@@ -37,7 +37,7 @@ class TestPRConfig:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         assert config.pr_labels == ["review", "auto"]
@@ -59,7 +59,7 @@ class TestPRConfig:
             modules=[Module(
                 name="auth", spec_id="S1",
                 source_dir="src/", source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
 
@@ -101,7 +101,7 @@ class TestPRConfig:
             modules=[Module(
                 name="auth", spec_id="SPEC-R1",
                 source_dir="src/", source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
 

@@ -157,7 +157,7 @@ class TestIssue19EmptySourceFilesKeyError:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=[],  # empty!
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)

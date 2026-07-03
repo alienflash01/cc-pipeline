@@ -52,7 +52,7 @@ class TestCrossProjectSupport:
             base_branch="develop",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert config.repo == "/home/user/my-project"
         assert config.base_branch == "develop"
@@ -65,7 +65,7 @@ class TestCrossProjectSupport:
             output_branch_prefix="code-review",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert config.output_branch_prefix == "code-review"
 
@@ -78,7 +78,7 @@ class TestCrossProjectSupport:
             pr_title_template="UT for {module}",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         review_config = PipelineConfig(
             repo="/tmp/proj2",
@@ -86,7 +86,7 @@ class TestCrossProjectSupport:
             pr_title_template="Code Review: {module}",
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                          coverage={"line_threshold": 80, "branch_threshold": 70})],
+                          variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert ut_config.pr_labels == ["ut", "auto"]
         assert review_config.pr_labels == ["code-review", "auto"]

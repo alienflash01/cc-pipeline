@@ -21,7 +21,7 @@ class TestShellCommandField:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)
@@ -43,7 +43,7 @@ class TestShellCommandField:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)
@@ -66,7 +66,7 @@ class TestShellCommandField:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)
@@ -88,7 +88,7 @@ class TestShellCommandField:
             modules=[Module(
                 name="auth", source_dir="src/",
                 source_files=["a.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)
@@ -109,7 +109,7 @@ class TestShellCommandField:
             modules=[Module(
                 name="payment", source_dir="src/payment/",
                 source_files=["pay.c"],
-                coverage={"line_threshold": 80, "branch_threshold": 70},
+                variables={"line_threshold": 80, "branch_threshold": 70},
             )],
         )
         compiler = PipelineCompiler(config)

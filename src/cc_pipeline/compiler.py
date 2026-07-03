@@ -74,7 +74,6 @@ class PipelineCompiler:
             "source_dir": module.source_dir,
             "spec_id": module.spec_id,
             **module.variables,
-            **module.coverage,
         }
 
         # Compile steps

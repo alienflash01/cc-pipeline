@@ -43,7 +43,7 @@ class TestIssue3PRSilentSwallow:
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok",
                                    postcondition={"shell": "true"})],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
-                           coverage={"line_threshold": 80, "branch_threshold": 70})],
+                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         orch = Orchestrator(config=config, run_dir=str(tmp_path / "runs"))
 
@@ -117,7 +117,7 @@ class TestIssue20CircularDependency:
                 PipelineStep(id="b", executor="shell", command="echo b", depends_on="a"),
             ],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                           coverage={"line_threshold": 80, "branch_threshold": 70})],
+                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         compiler = PipelineCompiler(config)
         with pytest.raises(ValueError, match="Circular"):
@@ -251,7 +251,7 @@ class TestIssue37DependsOnNonexistent:
                 PipelineStep(id="a", executor="shell", command="echo a", depends_on="nonexistent"),
             ],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
-                           coverage={"line_threshold": 80, "branch_threshold": 70})],
+                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         compiler = PipelineCompiler(config)
         with pytest.raises(ValueError, match="does not exist"):
@@ -287,7 +287,7 @@ class TestIssue42StopIteration:
             pipeline=[PipelineStep(id="x", executor="shell", command="echo ok",
                                    postcondition={"shell": "true"})],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
-                           coverage={"line_threshold": 80, "branch_threshold": 70})],
+                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         orch = Orchestrator(config=config, run_dir=str(tmp_path / "runs"))
 

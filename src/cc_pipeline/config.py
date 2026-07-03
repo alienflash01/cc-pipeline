@@ -28,12 +28,11 @@ class PipelineStep:
 
 @dataclass
 class Module:
-    """A module to process."""
+    """A task module to process. Generic — no UT-specific fields."""
     name: str
     spec_id: str = ""
     source_dir: str = ""
     source_files: list[str] = field(default_factory=list)
-    coverage: dict = field(default_factory=dict)
     variables: dict = field(default_factory=dict)
 
 
@@ -116,13 +115,22 @@ def load_config(path: str) -> PipelineConfig:
     # Parse modules
     modules = []
     for mod_raw in raw["modules"]:
+        # Migration: fold deprecated 'coverage' into 'variables'
+        variables = mod_raw.get("variables", {})
+        if "coverage" in mod_raw:
+            import warnings as _cov_w
+            _cov_w.warn(
+                f"Module '{mod_raw.get('name', '?')}': 'coverage' is deprecated, "
+                f"fold its contents into 'variables' instead",
+                stacklevel=2,
+            )
+            variables = {**mod_raw["coverage"], **variables}
         mod = Module(
             name=mod_raw["name"],
             spec_id=mod_raw.get("spec_id", ""),
             source_dir=mod_raw.get("source_dir", ""),
             source_files=mod_raw.get("source_files", []),
-            coverage=mod_raw.get("coverage", {}),
-            variables=mod_raw.get("variables", {}),
+            variables=variables,
         )
         modules.append(mod)
     

@@ -45,11 +45,11 @@ class TestGracefulShutdown:
             )],
             modules=[
                 Module(name="mod_a", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
                 Module(name="mod_b", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
                 Module(name="mod_c", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
             ],
         )
 
@@ -99,9 +99,9 @@ class TestGracefulShutdown:
             )],
             modules=[
                 Module(name="mod_a", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
                 Module(name="mod_b", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
             ],
         )
 
@@ -130,9 +130,9 @@ class TestGracefulShutdown:
             )],
             modules=[
                 Module(name="mod_a", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
                 Module(name="mod_b", source_dir="src/", source_files=["a.c"],
-                       coverage={"line_threshold": 80, "branch_threshold": 70}),
+                       variables={"line_threshold": 80, "branch_threshold": 70}),
             ],
         )
 
