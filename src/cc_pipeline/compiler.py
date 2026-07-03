@@ -87,8 +87,26 @@ class PipelineCompiler:
                         f"Step '{step.id}' uses loop: per_file but module "
                         f"'{module.name}' has empty source_files"
                     )
-                for filename in module.source_files:
-                    vars_with_file = {**base_vars, "file": filename}
+                for entry in module.source_files:
+                    # Support both string and dict entries
+                    if isinstance(entry, str):
+                        vars_with_file = {**base_vars, "file": entry}
+                        loop_file = entry
+                    elif isinstance(entry, dict):
+                        if "path" not in entry:
+                            raise ValueError(
+                                f"Step '{step.id}' module '{module.name}': "
+                                f"source_files dict entry missing 'path' key: {entry}"
+                            )
+                        # Expand all dict keys as variables, path → file
+                        entry_vars = {k: v for k, v in entry.items() if k != "path"}
+                        vars_with_file = {**base_vars, **entry_vars, "file": entry["path"]}
+                        loop_file = entry["path"]
+                    else:
+                        raise ValueError(
+                            f"Step '{step.id}' module '{module.name}': "
+                            f"source_files entry must be string or dict, got {type(entry)}"
+                        )
                     compiled.append(CompiledStep(
                         step_id=step.id,
                         executor=step.executor,
@@ -98,7 +116,7 @@ class PipelineCompiler:
                         rollback=step.rollback,
                         output=step.output,
                         depends_on=step.depends_on,
-                        loop_file=filename,
+                        loop_file=loop_file,
                         model=step.model,
                         timeout=step.timeout,
                     ))

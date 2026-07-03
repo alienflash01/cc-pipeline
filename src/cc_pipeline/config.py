@@ -32,7 +32,7 @@ class Module:
     name: str
     spec_id: str = ""
     source_dir: str = ""
-    source_files: list[str] = field(default_factory=list)
+    source_files: list = field(default_factory=list)  # list[str | dict]
     variables: dict = field(default_factory=dict)
 
 
