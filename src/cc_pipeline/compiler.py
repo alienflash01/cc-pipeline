@@ -24,6 +24,7 @@ class CompiledStep:
     loop_file: str | None = None  # set when this is a loop expansion
     model: str = ""  # per-step model (empty = use global)
     timeout: int | None = None  # per-step timeout override
+    on_failure: str | None = None  # jump-back target on failure (step_id)
 
 
 class PipelineCompiler:
@@ -119,6 +120,7 @@ class PipelineCompiler:
                         loop_file=loop_file,
                         model=step.model,
                         timeout=step.timeout,
+                        on_failure=step.on_failure,
                     ))
             else:
                 compiled.append(CompiledStep(
@@ -132,6 +134,7 @@ class PipelineCompiler:
                     depends_on=step.depends_on,
                     model=step.model,
                     timeout=step.timeout,
+                    on_failure=step.on_failure,
                 ))
 
         # Sort by depends_on (topological-ish)

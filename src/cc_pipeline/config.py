@@ -24,6 +24,7 @@ class PipelineStep:
     on_complete: list | None = None
     skill: str | None = None
     timeout: int | None = None
+    on_failure: str | None = None  # jump-back target step_id on failure
 
 
 def _resolve_worktree_root(worktree_root: str, repo: str) -> str:
@@ -125,6 +126,7 @@ def load_config(path: str) -> PipelineConfig:
             command=step_raw.get("command", ""),
             prompt_file=step_raw.get("prompt_file"),
             timeout=step_raw.get("timeout"),
+            on_failure=step_raw.get("on_failure"),
         )
         pipeline.append(step)
     

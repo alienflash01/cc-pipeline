@@ -111,15 +111,24 @@ class ModuleRunner:
         self.git_checkpoint = GitCheckpoint(worktree_path)
 
     def run(self) -> dict:
-        """Execute all steps sequentially.
+        """Execute all steps sequentially. Supports on_failure jump-back.
+
+        When a step with on_failure set fails (after exhausting retries),
+        the runner jumps back to the target step (no git rollback).
+        Limited to MAX_ON_FAILURE_JUMPS to prevent infinite loops.
 
         Returns:
             Dict with keys: status, module, steps_completed, steps_total.
         """
+        MAX_ON_FAILURE_JUMPS = 2  # max times on_failure can trigger
         total = len(self.steps)
         completed = 0
 
-        for i, step in enumerate(self.steps, 1):
+        step_idx = 0
+        jump_count = 0
+
+        while step_idx < len(self.steps):
+            step = self.steps[step_idx]
             passed = False
 
             retry_budget = step.retry  # budget that CAN be consumed
@@ -168,8 +177,8 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        if i > 1:
-                            prev_step = self.steps[i - 2]
+                        if step_idx > 0:
+                            prev_step = self.steps[step_idx - 1]
                             self.git_checkpoint.rollback_to_latest(
                                 step=prev_step.step_id,
                                 module=self.module_name,
@@ -180,11 +189,10 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        break  # exit while loop, step failed
+                        break  # exit inner while, step failed
 
-                # Layer 3: CC succeeded → check postcondition
+                # Layer 3: CC succeeded → check postcondition (inside while True)
                 pc_result = self._check_postcondition(step)
-
                 if pc_result.passed:
                     self.logger.log_pass(step=step.step_id, attempt=current_attempt,
                                          info={"reason": pc_result.reason})
@@ -194,7 +202,7 @@ class ModuleRunner:
                         attempt=current_attempt,
                     )
                     self._append_progress(step, "PASS", current_attempt)
-                    completed = i
+                    completed = step_idx + 1
                     passed = True
                     break
                 else:
@@ -204,8 +212,8 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
-                        if i > 1:
-                            prev_step = self.steps[i - 2]
+                        if step_idx > 0:
+                            prev_step = self.steps[step_idx - 1]
                             self.git_checkpoint.rollback_to_latest(
                                 step=prev_step.step_id,
                                 module=self.module_name,
@@ -218,7 +226,27 @@ class ModuleRunner:
                         )
                         break
 
+            # After inner while: check passed/on_failure
+
             if not passed:
+                # Check on_failure jump-back
+                if step.on_failure and jump_count < MAX_ON_FAILURE_JUMPS:
+                    # Find target step index
+                    target_idx = None
+                    for j, s in enumerate(self.steps):
+                        if s.step_id == step.on_failure:
+                            target_idx = j
+                            break
+                    if target_idx is not None:
+                        jump_count += 1
+                        self.logger.event(
+                            "on_failure_jump",
+                            step=step.step_id, attempt=0,
+                            info={"from": step.step_id, "to": step.on_failure,
+                                  "jump": jump_count},
+                        )
+                        step_idx = target_idx
+                        continue
                 return {
                     "status": "failed",
                     "module": self.module_name,
@@ -226,6 +254,8 @@ class ModuleRunner:
                     "steps_total": total,
                     "error": f"Step '{step.step_id}' failed after {step.retry + 1} attempts",
                 }
+
+            step_idx += 1
 
         return {
             "status": "passed",
