@@ -190,8 +190,14 @@ def load_config(path: str) -> PipelineConfig:
 
     # Validate source_files (security: prevent path traversal)
     for mod in modules:
+        if not isinstance(mod.source_files, list):
+            raise ValueError(
+                f"Module '{mod.name}': source_files must be a list, got {type(mod.source_files).__name__}. "
+                f"Use:\n  source_files:\n    - {mod.source_files}\n  # NOT: source_files: {mod.source_files}"
+            )
         for sf in mod.source_files:
-            if ".." in sf or "/" in sf or "\\" in sf:
+            sf_str = sf["path"] if isinstance(sf, dict) else sf
+            if ".." in sf_str or "/" in sf_str or "\\" in sf_str:
                 raise ValueError(
                     f"Invalid source_file '{sf}' in module '{mod.name}': "
                     f"no path traversal or slashes allowed"
