@@ -61,23 +61,29 @@ modules:
         """YAML with prompt_file: field should populate PipelineStep.prompt_file."""
         from cc_pipeline.config import load_config
 
+        # Create the prompt file so validation passes
+        prompt_dir = tmp_path / "prompts"
+        prompt_dir.mkdir()
+        (prompt_dir / "gen.md").write_text("Generate tests for {module}")
+
         config_file = tmp_path / "config.yaml"
         config_file.write_text(f"""
 repo: {tmp_path}
 pipeline:
   - id: gen
     executor: claude-code
-    prompt_file: /tmp/prompts/gen.md
+    prompt_file: {prompt_dir / "gen.md"}
 modules:
   - name: m
     source_dir: src/
     source_files: [a.c]
-    coverage:
+    variables:
       line_threshold: 80
       branch_threshold: 70
 """)
         config = load_config(str(config_file))
-        assert config.pipeline[0].prompt_file == "/tmp/prompts/gen.md", \
+        prompt_path = str(prompt_dir / "gen.md")
+        assert config.pipeline[0].prompt_file == prompt_path, \
             "prompt_file field not parsed from YAML"
 
 

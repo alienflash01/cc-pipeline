@@ -108,6 +108,19 @@ def _cmd_run(args) -> int:
     from cc_pipeline.config import load_config
     from cc_pipeline.orchestrator import Orchestrator
 
+    # Load config with friendly error handling
+    try:
+        config = load_config(args.config)
+    except FileNotFoundError as e:
+        print(f"Error: Config file not found: {args.config}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: Config validation failed: {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        print(f"Error: Failed to load config: {e}", file=sys.stderr)
+        return 1
+
     # Set up run directory
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     run_dir = Path(args.run_dir) if args.run_dir else Path("~/.cc-pipeline/runs").expanduser()
@@ -138,8 +151,7 @@ def _cmd_run(args) -> int:
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
 
-    # Build config
-    config = load_config(args.config)
+    # Override concurrency if specified
     if args.concurrency is not None:
         config.concurrency = args.concurrency
 
@@ -160,7 +172,14 @@ def _cmd_run(args) -> int:
         cc_model=cc_model,
     )
 
-    results = orch.run()
+    try:
+        results = orch.run()
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     # Check for graceful shutdown
     global _shutdown_requested
@@ -231,7 +250,14 @@ def _cmd_resume(args) -> int:
         resume=True,
     )
 
-    results = orch.run()
+    try:
+        results = orch.run()
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
     # Print summary
     passed = sum(1 for r in results if r["status"] == "passed")

@@ -233,6 +233,18 @@ def load_config(path: str) -> PipelineConfig:
                 stacklevel=2,
             )
 
+    # Validate prompt_file paths exist (fail early, not at runtime)
+    for step in pipeline:
+        if step.prompt_file:
+            from pathlib import Path as _P
+            p = _P(step.prompt_file)
+            if not p.exists():
+                cfg_dir = _P(path).parent
+                if not (cfg_dir / step.prompt_file).exists():
+                    raise FileNotFoundError(
+                        f"prompt_file not found: {step.prompt_file}"
+                    )
+
     return PipelineConfig(
         repo=raw["repo"],
         base_branch=raw.get("base_branch", "main"),
