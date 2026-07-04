@@ -75,6 +75,11 @@ def _build_parser() -> argparse.ArgumentParser:
     uninstall_parser.add_argument("--yes", action="store_true", default=False,
                                   help="Skip confirmation prompt")
 
+    # transcript subcommand
+    transcript_parser = subparsers.add_parser("transcript", help="View transcript.jsonl in readable format")
+    transcript_parser.add_argument("--run-dir", required=True, help="Run directory")
+    transcript_parser.add_argument("--module", default=None, help="Module name (default: all modules)")
+
     return parser
 
 
@@ -101,6 +106,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_report(args)
     if args.command == "uninstall":
         return _cmd_uninstall(args)
+    if args.command == "transcript":
+        return _cmd_transcript(args)
 
     return 0
 
@@ -667,6 +674,98 @@ def _cmd_uninstall(args) -> int:
 
     print("\ncc-pipeline uninstalled successfully.")
     print("Note: Your project repos and worktrees are NOT touched.")
+    return 0
+
+
+def _cmd_transcript(args) -> int:
+    """Display transcript.jsonl in human-readable format with full prompts."""
+    run_dir = Path(args.run_dir)
+
+    if args.module:
+        modules = [args.module]
+    else:
+        # Find all modules with transcript files
+        modules = sorted([
+            d.name for d in run_dir.iterdir()
+            if d.is_dir() and (d / "transcript.jsonl").exists()
+        ])
+        if not modules:
+            print("No transcript files found in run directory.")
+            return 1
+
+    for mod_name in modules:
+        transcript_path = run_dir / mod_name / "transcript.jsonl"
+        if not transcript_path.exists():
+            print(f"Module '{mod_name}': transcript not found", file=sys.stderr)
+            if args.module:
+                return 1
+            continue
+
+        print(f"\n{'='*60}")
+        print(f"  Module: {mod_name}")
+        print(f"{'='*60}\n")
+
+        events = []
+        try:
+            with open(transcript_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        events.append(_json.loads(line))
+        except Exception as e:
+            print(f"Error reading transcript: {e}")
+            continue
+
+        for d in events:
+            event = d.get("event", "?")
+            ts = d.get("ts", "")
+            step = d.get("step", "")
+            attempt = d.get("attempt", "")
+            loop_file = d.get("loop_file")
+
+            ts_short = ts[11:19] if len(ts) >= 19 else ts  # HH:MM:SS
+
+            if event == "step_start":
+                file_info = f" [{loop_file}]" if loop_file else ""
+                print(f"── {ts_short} ── {step}{file_info} ── attempt {attempt} ──")
+
+            elif event == "cc_prompt":
+                prompt = d.get("info", {}).get("prompt") if isinstance(d.get("info"), dict) else d.get("prompt", "")
+                if not prompt:
+                    prompt = d.get("prompt", "")
+                print(f"   [PROMPT]")
+                for line in prompt.splitlines():
+                    print(f"   │ {line}")
+                print()
+
+            elif event == "pass":
+                info = d.get("info", {})
+                reason = info.get("reason", "") if isinstance(info, dict) else str(info)
+                print(f"   ✅ PASS — {reason}")
+
+            elif event == "fail":
+                reason = d.get("reason", "")
+                print(f"   ❌ FAIL — {reason}")
+
+            elif event == "retry":
+                reason = d.get("reason", "")
+                print(f"   ⚠️  RETRY (attempt {attempt}) — {reason}")
+
+            elif event == "on_failure_jump":
+                info = d.get("info", {})
+                if isinstance(info, dict):
+                    print(f"   ↩️  JUMP BACK: {info.get('from','')} → {info.get('to','')} (jump {info.get('jump','')})")
+                else:
+                    print(f"   ↩️  JUMP BACK")
+
+            elif event == "pr_error":
+                print(f"   ⚠️  PR ERROR")
+
+            else:
+                print(f"   [{event}] {d}")
+
+        print()
+
     return 0
 
 
