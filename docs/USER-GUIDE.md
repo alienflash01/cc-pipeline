@@ -47,7 +47,7 @@ pip install -e ".[dev]"
 
 ```bash
 cc-pipeline --version
-# → cc-pipeline 0.1.0
+# → cc-pipeline 0.3.0
 ```
 
 ### 配置 Claude Code
@@ -118,7 +118,7 @@ cc-pipeline run modules.yaml
 输出：
 
 ```
-🌙 cc-pipeline 0.1.0
+🌙 cc-pipeline 0.3.0
    run_id=2026-07-01T23-00-00  concurrency=3  model=auto (CC default)
    modules=['auth']
 

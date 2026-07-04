@@ -103,7 +103,8 @@ def load_config(path: str) -> PipelineConfig:
     # Parse pipeline steps
     _KNOWN_STEP_FIELDS = {"id", "executor", "prompt", "command", "prompt_file", "model",
                           "loop", "retry", "rollback", "output", "depends_on",
-                          "postcondition", "on_complete", "skill", "timeout"}
+                          "postcondition", "on_complete", "skill", "timeout",
+                          "on_failure", "on_failure_max_jumps"}
     pipeline = []
     for step_raw in raw["pipeline"]:
         # Warn on unknown fields
