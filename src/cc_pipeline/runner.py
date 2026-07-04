@@ -156,6 +156,9 @@ class ModuleRunner:
                 # Layer 1: Rate limit → free retry with backoff, limited count
                 if exec_result.outcome == ExecOutcome.RATE_LIMITED:
                     if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=f"Rate limited (free retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES}): {exec_result.reason}",
@@ -185,6 +188,9 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         if step_idx > 0:
                             prev_step = self.steps[step_idx - 1]
                             self.git_checkpoint.rollback_to_latest(
@@ -197,6 +203,9 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
 
                 # Layer 3: CC succeeded → check postcondition (inside while True)
@@ -224,6 +233,9 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
                         if step_idx > 0:
                             prev_step = self.steps[step_idx - 1]
                             self.git_checkpoint.rollback_to_latest(
@@ -236,6 +248,9 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {pc_result.reason}")
                         break
 
             # After inner while: check passed/on_failure
@@ -258,6 +273,9 @@ class ModuleRunner:
                                   "jump": jump_count},
                         )
                         step_idx = target_idx
+                        if self.verbose:
+                            ts = datetime.now().strftime("%H:%M:%S")
+                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id} → {step.on_failure} (jump {jump_count})")
                         continue
                 return {
                     "status": "failed",

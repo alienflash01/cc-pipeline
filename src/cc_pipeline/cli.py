@@ -2,6 +2,7 @@
 import argparse
 import json as _json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -112,6 +113,60 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _preflight_check(config, args) -> bool:
+    """Pre-run environment checks. Warns on issues, never blocks the run.
+
+    Advisories only — detecting a problem prints a WARNING to stderr but
+    does not stop execution (returns True always). Checks:
+      1. Claude Code CLI is installed (``which claude``)
+      2. repo directory exists
+      3. repo is a git repository (``.git`` present)
+      4. base_branch exists in repo (``git rev-parse``)
+      5. worktree_root's parent directory exists (if worktree_root configured)
+    """
+    warnings: list[str] = []
+
+    # 1. Claude Code CLI installed
+    if shutil.which("claude") is None:
+        warnings.append(
+            "Claude Code CLI not found (npm i -g @anthropic-ai/claude-code)"
+        )
+
+    # 2. repo directory exists
+    repo_path = Path(config.repo)
+    repo_is_git = repo_path.is_dir() and (repo_path / ".git").exists()
+    if not repo_path.is_dir():
+        warnings.append(f"Repo directory not found: {config.repo}")
+    elif not (repo_path / ".git").exists():
+        # 3. repo is a git repository
+        warnings.append(f"Repo is not a git repository (no .git): {config.repo}")
+
+    # 4. base_branch exists (only meaningful on a real git repo)
+    if repo_is_git:
+        rev = subprocess.run(
+            ["git", "-C", str(repo_path), "rev-parse", "--verify", config.base_branch],
+            capture_output=True,
+        )
+        if rev.returncode != 0:
+            warnings.append(f"Branch {config.base_branch} not found in repo")
+
+    # 5. worktree_root's parent directory exists (if configured)
+    if config.worktree_root:
+        wt_parent = Path(config.worktree_root).parent
+        if not wt_parent.exists():
+            warnings.append(
+                f"worktree_root parent directory not found: {wt_parent}"
+            )
+
+    if warnings:
+        print("⚠️  Preflight warning:", file=sys.stderr)
+        for w in warnings:
+            print(f"  • {w}", file=sys.stderr)
+
+    # Always True — warnings are advisory, never block the run.
+    return True
+
+
 def _cmd_run(args) -> int:
     """Execute the run command, optionally as daemon."""
     from cc_pipeline.config import load_config
@@ -129,6 +184,9 @@ def _cmd_run(args) -> int:
     except Exception as e:
         print(f"Error: Failed to load config: {e}", file=sys.stderr)
         return 1
+
+    # Preflight: warn on environment issues (missing CC CLI, bad repo/branch, ...)
+    _preflight_check(config, args)
 
     # Set up run directory
     now = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
@@ -206,8 +264,12 @@ def _cmd_run(args) -> int:
     print()
     print("=" * 60)
     for r in results:
-        icon = "✓" if r["status"] == "passed" else "✗"
-        print(f"  {icon} {r['module']:20s}  {r['status']}")
+        if r["status"] == "passed":
+            print(f"  ✓ {r['module']:20s}  {r['status']}")
+        else:
+            reason = r.get("error") or r["status"]
+            print(f"  ✗ {r['module']:20s}  {r['status']} — {reason}")
+            print(f"     💡 cc-pipeline transcript --run-dir {run_dir} --module {r['module']}")
     print("=" * 60)
     print(f"  {passed} passed, {failed} failed  (run_id: {orch.run_id})")
 
@@ -231,6 +293,9 @@ def _cmd_resume(args) -> int:
     config = load_config(args.config)
     if args.concurrency is not None:
         config.concurrency = args.concurrency
+
+    # Preflight: warn on environment issues (missing CC CLI, bad repo/branch, ...)
+    _preflight_check(config, args)
 
     # Read previous state
     passed_modules = set()
@@ -281,9 +346,13 @@ def _cmd_resume(args) -> int:
     print()
     print("=" * 60)
     for r in results:
-        status = "✓" if r["status"] == "passed" else "✗"
-        extra = f"  {r.get('pr_url', '')}" if r.get("pr_url") else ""
-        print(f"  {status} {r['module']:20s}  {r['status']}{extra}")
+        if r["status"] == "passed":
+            extra = f"  {r.get('pr_url', '')}" if r.get("pr_url") else ""
+            print(f"  ✓ {r['module']:20s}  {r['status']}{extra}")
+        else:
+            reason = r.get("error") or r["status"]
+            print(f"  ✗ {r['module']:20s}  {r['status']} — {reason}")
+            print(f"     💡 cc-pipeline transcript --run-dir {run_dir} --module {r['module']}")
     print("=" * 60)
     print(f"  {passed} passed, {failed} failed")
 
