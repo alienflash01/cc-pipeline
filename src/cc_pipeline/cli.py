@@ -3,6 +3,7 @@ import argparse
 import json as _json
 import os
 import signal
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,11 @@ def _build_parser() -> argparse.ArgumentParser:
     report_parser.add_argument("--config", default=None,
                                help="Config YAML (needed for the DAG in --format html)")
 
+    # uninstall subcommand
+    uninstall_parser = subparsers.add_parser("uninstall", help="Uninstall cc-pipeline")
+    uninstall_parser.add_argument("--yes", action="store_true", default=False,
+                                  help="Skip confirmation prompt")
+
     return parser
 
 
@@ -91,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_stop(args)
     if args.command == "report":
         return _cmd_report(args)
+    if args.command == "uninstall":
+        return _cmd_uninstall(args)
 
     return 0
 
@@ -584,6 +592,49 @@ def _write_html_report(args, run_dir: Path, state: dict, run_id: str, modules: d
     out_path = run_dir / "report.html"
     out_path.write_text(report)
     print(f"Report written to {out_path}")
+    return 0
+
+
+def _cmd_uninstall(args) -> int:
+    """Uninstall cc-pipeline: remove pip package + clean temp dirs."""
+    import shutil
+
+    # Confirmation
+    if not args.yes:
+        print("This will uninstall cc-pipeline and remove temporary files.")
+        print("Run with --yes to skip this confirmation.")
+        response = input("Proceed? [y/N] ")
+        if response.lower() not in ("y", "yes"):
+            print("Cancelled.")
+            return 0
+
+    # Step 1: pip uninstall
+    print("Uninstalling cc-pipeline package...")
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "pip", "uninstall", "-y", "cc-pipeline"],
+            capture_output=True,
+        )
+        print("  Package uninstalled.")
+    except Exception as e:
+        print(f"  Warning: pip uninstall failed: {e}")
+
+    # Step 2: Clean temp worktree dir
+    temp_wt = Path("/tmp/cc-pipeline-worktrees")
+    if temp_wt.exists():
+        print(f"Removing {temp_wt}...")
+        shutil.rmtree(temp_wt, ignore_errors=True)
+        print("  Cleaned.")
+
+    # Step 3: Clean common run dirs
+    default_runs = Path.home() / ".cc-pipeline" / "runs"
+    if default_runs.exists():
+        print(f"Removing {default_runs}...")
+        shutil.rmtree(default_runs, ignore_errors=True)
+        print("  Cleaned.")
+
+    print("\ncc-pipeline uninstalled successfully.")
+    print("Note: Your project repos and worktrees are NOT touched.")
     return 0
 
 
