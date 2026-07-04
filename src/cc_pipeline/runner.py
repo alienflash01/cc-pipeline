@@ -317,10 +317,15 @@ class ModuleRunner:
         if step.output:
             # Sanitize: strip path traversal and slashes
             safe_output = step.output.replace("..", "").replace("/", "").replace("\\", "")
-            prompt += (
-                "\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
-                f"以 JSON 格式写入 .pipeline/{safe_output}"
-            )
+            # Use custom output_prompt if provided, otherwise default
+            output_tpl = getattr(step, "output_prompt", None)
+            if output_tpl:
+                prompt += "\n\n---\n" + output_tpl.replace("{output}", safe_output)
+            else:
+                prompt += (
+                    "\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
+                    f"以 JSON 格式写入 .pipeline/{safe_output}"
+                )
 
         return prompt
 

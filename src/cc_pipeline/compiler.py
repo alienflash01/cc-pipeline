@@ -26,6 +26,7 @@ class CompiledStep:
     timeout: int | None = None  # per-step timeout override
     on_failure: str | None = None  # jump-back target on failure (step_id)
     on_failure_max_jumps: int = 2  # max jump-back count
+    output_prompt: str | None = None  # custom output injection text
 
 
 class PipelineCompiler:
@@ -109,10 +110,11 @@ class PipelineCompiler:
                             f"Step '{step.id}' module '{module.name}': "
                             f"source_files entry must be string or dict, got {type(entry)}"
                         )
+                    step_vars = {**vars_with_file, "output": step.output or ""}
                     compiled.append(CompiledStep(
                         step_id=step.id,
                         executor=step.executor,
-                        rendered_prompt=render(self._resolve_prompt(step), vars_with_file),
+                        rendered_prompt=render(self._resolve_prompt(step), step_vars),
                         postcondition=self._render_postcondition(step, vars_with_file),
                         retry=retry,
                         rollback=step.rollback,
@@ -123,12 +125,14 @@ class PipelineCompiler:
                         timeout=step.timeout,
                         on_failure=step.on_failure,
                         on_failure_max_jumps=step.on_failure_max_jumps,
+                        output_prompt=step.output_prompt,
                     ))
             else:
+                step_vars = {**base_vars, "output": step.output or ""}
                 compiled.append(CompiledStep(
                     step_id=step.id,
                     executor=step.executor,
-                    rendered_prompt=render(self._resolve_prompt(step), base_vars),
+                    rendered_prompt=render(self._resolve_prompt(step), step_vars),
                     postcondition=self._render_postcondition(step, base_vars),
                     retry=retry,
                     rollback=step.rollback,
@@ -138,6 +142,7 @@ class PipelineCompiler:
                     timeout=step.timeout,
                     on_failure=step.on_failure,
                     on_failure_max_jumps=getattr(step, "on_failure_max_jumps", 2),
+                    output_prompt=getattr(step, "output_prompt", None),
                 ))
 
         # Sort by depends_on (topological-ish)

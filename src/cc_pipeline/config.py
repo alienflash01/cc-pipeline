@@ -26,6 +26,7 @@ class PipelineStep:
     timeout: int | None = None
     on_failure: str | None = None  # jump-back target step_id on failure
     on_failure_max_jumps: int = 2  # max jump-back count
+    output_prompt: str | None = None  # custom output injection text (default: framework's)
 
 
 def _resolve_worktree_root(worktree_root: str, repo: str) -> str:
@@ -104,7 +105,7 @@ def load_config(path: str) -> PipelineConfig:
     _KNOWN_STEP_FIELDS = {"id", "executor", "prompt", "command", "prompt_file", "model",
                           "loop", "retry", "rollback", "output", "depends_on",
                           "postcondition", "on_complete", "skill", "timeout",
-                          "on_failure", "on_failure_max_jumps"}
+                          "on_failure", "on_failure_max_jumps", "output_prompt"}
     pipeline = []
     for step_raw in raw["pipeline"]:
         # Warn on unknown fields
@@ -130,6 +131,7 @@ def load_config(path: str) -> PipelineConfig:
             timeout=step_raw.get("timeout"),
             on_failure=step_raw.get("on_failure"),
             on_failure_max_jumps=step_raw.get("on_failure_max_jumps", 2),
+            output_prompt=step_raw.get("output_prompt"),
         )
         pipeline.append(step)
     
