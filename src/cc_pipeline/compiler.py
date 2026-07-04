@@ -25,6 +25,7 @@ class CompiledStep:
     model: str = ""  # per-step model (empty = use global)
     timeout: int | None = None  # per-step timeout override
     on_failure: str | None = None  # jump-back target on failure (step_id)
+    on_failure_max_jumps: int = 2  # max jump-back count
 
 
 class PipelineCompiler:
@@ -121,6 +122,7 @@ class PipelineCompiler:
                         model=step.model,
                         timeout=step.timeout,
                         on_failure=step.on_failure,
+                        on_failure_max_jumps=step.on_failure_max_jumps,
                     ))
             else:
                 compiled.append(CompiledStep(
@@ -135,6 +137,7 @@ class PipelineCompiler:
                     model=step.model,
                     timeout=step.timeout,
                     on_failure=step.on_failure,
+                    on_failure_max_jumps=getattr(step, "on_failure_max_jumps", 2),
                 ))
 
         # Sort by depends_on (topological-ish)

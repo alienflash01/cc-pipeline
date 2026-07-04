@@ -120,7 +120,7 @@ class ModuleRunner:
         Returns:
             Dict with keys: status, module, steps_completed, steps_total.
         """
-        MAX_ON_FAILURE_JUMPS = 2  # max times on_failure can trigger
+        MAX_ON_FAILURE_JUMPS = 2  # default, overridden by step.on_failure_max_jumps
         total = len(self.steps)
         completed = 0
 
@@ -230,7 +230,7 @@ class ModuleRunner:
 
             if not passed:
                 # Check on_failure jump-back
-                if step.on_failure and jump_count < MAX_ON_FAILURE_JUMPS:
+                if step.on_failure and jump_count < getattr(step, "on_failure_max_jumps", MAX_ON_FAILURE_JUMPS):
                     # Find target step index
                     target_idx = None
                     for j, s in enumerate(self.steps):
