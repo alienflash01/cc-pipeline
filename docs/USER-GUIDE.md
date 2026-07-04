@@ -1,6 +1,6 @@
 # cc-pipeline 用户指导文档
 
-> 版本：v0.3 | 449 tests | 95% coverage | 更新日期：2026-07-04
+> 版本：v0.3 | 492 tests | 95% coverage | 更新日期：2026-07-04
 
 ---
 
@@ -21,8 +21,9 @@
 13. [崩溃恢复](#13-崩溃恢复)
 14. [运行报告](#14-运行报告)
 15. [日志与调试](#15-日志与调试)
-16. [异常处理](#16-异常处理)
-17. [常见问题](#17-常见问题)
+16. [Transcript 命令（运行调试）](#16-transcript-命令运行调试)
+17. [异常处理](#17-异常处理)
+18. [常见问题](#18-常见问题)
 
 ---
 
@@ -266,6 +267,7 @@ modules:
 | `depends_on` | string | `null` | 前置步骤 ID |
 | `postcondition` | dict | `null` | 通过条件 |
 | `output` | string | `null` | CC 产出状态文件名（写入 `.pipeline/{output}`） |
+| `output_prompt` | string | `null` | 自定义 output 注入文本（替代框架默认中文指令） |
 | `timeout` | int | `null` | 按步骤超时（秒） |
 | `on_failure` | string | `null` | 失败后跳转的 step_id（不回滚） |
 | `on_failure_max_jumps` | int | `2` | `on_failure` 最大跳转次数 |
@@ -393,6 +395,41 @@ generate CC 执行
   output: scaffold.json    # ← CC 会被要求写这个文件
 ```
 
+### output_prompt 字段（自定义注入文本）
+
+默认情况下，框架在 prompt 尾部注入一段固定的中文指令，要求 CC 把关键信息以 JSON 格式写入 `.pipeline/{output}`：
+
+```
+请将本次执行的关键信息...以 JSON 格式写入 .pipeline/{output}
+```
+
+如果这段默认指令不符合需求（例如想换语言、换格式、换措辞），用 `output_prompt` 自定义：
+
+```yaml
+- id: analyze
+  executor: claude-code
+  prompt: '分析 {module}，结果写到 {output}'
+  output: analyze.json
+  output_prompt: '将分析结果以 JSON 格式写入 .pipeline/{output}'
+```
+
+- `output_prompt` 中的 `{output}` 同样会被替换成 `output` 字段的实际值
+- 留空（默认 `null`）时使用框架内置的默认中文指令
+
+### {output} 变量
+
+`output` 字段的值可以作为 `{output}` 变量在 `prompt` 中直接引用：
+
+```yaml
+- id: collect
+  executor: claude-code
+  prompt: '将结果写到 {output}'
+  output: result.json
+  # CC 收到的 prompt: '将结果写到 result.json'
+```
+
+这样无需在 prompt 里硬编码文件名，只改 `output` 一处即可。
+
 ### 自动上下文注入
 
 **仅对 `claude-code` 和 `judge` executor 生效**（shell executor 不注入）：
@@ -474,6 +511,7 @@ postcondition:
 | `{line_threshold}` | variables → line_threshold | `80` |
 | `{branch_threshold}` | variables → branch_threshold | `70` |
 | `{custom_var}` | modules.yaml → variables / source_files dict 任意 key | `link-time` |
+| `{output}` | step.output 字段 | `result.json` |
 | `{.pipeline/xxx.json}` | 读取 JSON 文件内容注入 | `{"line": 85}` |
 
 > 凡是写在 module 的 `variables:` 里、或 `source_files` dict 里的任意 key（除 `path`），都会成为可用变量。
@@ -529,6 +567,21 @@ pipeline/{module}/{step}/{attempt}
 [retry]      step=generate attempt=1 reason="coverage 65 < 80"
 [step_start] step=generate attempt=2
 [pass]       step=generate attempt=2 reason="All conditions passed"
+```
+
+### Verbose 模式（带时间戳）
+
+`-v` / `--verbose` 在运行时实时打印每个步骤的 START / PASS / FAIL 等事件，并带时间戳，便于观察耗时与卡点：
+
+```bash
+cc-pipeline run config.yaml -v
+```
+
+输出示例：
+
+```
+  [20:15:03] [auth] generate     START [auth_login.c]
+  [20:15:48] [auth] generate     PASS  [auth_login.c]
 ```
 
 ### on_failure 回跳（不回滚）
@@ -822,7 +875,35 @@ cc-pipeline run config.yaml --concurrency 1
 
 ---
 
-## 16. 异常处理
+## 16. Transcript 命令（运行调试）
+
+`transcript` 命令把 `{run_dir}/{module}/transcript.jsonl` 渲染成人类可读的执行记录，便于排查 CC 实际收到了什么 prompt、返回了什么、为什么 PASS / FAIL / RETRY。
+
+### 基本用法
+
+```bash
+# 查看所有模块的完整执行记录
+cc-pipeline transcript --run-dir /data/runs/job1
+
+# 只看某个模块
+cc-pipeline transcript --run-dir /data/runs/job1 --module auth
+```
+
+### 输出格式说明
+
+| 段落 | 含义 |
+|------|------|
+| 步骤头部 | 时间戳 + step + attempt + loop_file |
+| `[PROMPT]` | 完整 CC prompt（逐行显示） |
+| CC RESULT | returncode + stdout（前 15 行）+ stderr（前 15 行） |
+| PASS / FAIL / RETRY | 状态 + 原因 |
+| JUMP BACK | `on_failure` 回跳记录（含 from / to） |
+
+> 与 `report` 的区别：`report` 生成汇总报告（成功率、模块详情）；`transcript` 则逐事件还原 CC 的真实输入输出，是定位「CC 这次到底干了什么」的首选工具。
+
+---
+
+## 17. 异常处理
 
 ### Orchestrator 异常保护
 
@@ -844,7 +925,7 @@ cc-pipeline run config.yaml --concurrency 1
 
 ---
 
-## 17. 常见问题
+## 18. 常见问题
 
 ### Q: CC 生成的测试质量差怎么办？
 
@@ -887,6 +968,12 @@ cc-pipeline run config.yaml --concurrency 1
 3. 下一步的 CC（claude-code/judge）自动收到前序所有 `.pipeline/*.json` 的内容
 
 注意：shell executor 不注入上下文（它的 `command` 就是命令本身）。
+
+### Q: prompt 里有 C 代码的花括号 `{ return 0; }`，会被误解析吗？
+
+**A:** 不会。框架只对「看起来像变量名」的花括号内容（如 `{config}`）发出警告并尝试替换。C 代码中的 `{ return 0; }`、`{ error_path; }` 等含空格、分号、特殊字符的花括号会**原样保留**，不替换也不警告。
+
+如果确实需要字面花括号（既不替换也不警告），用 `{{ }}` 转义。
 
 ### Q: 回滚后数据安全吗？
 
@@ -946,6 +1033,6 @@ cc-pipeline --help                                 # 帮助
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
-| v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式 |
+| v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
 | v0.2 | 2026-07-01 | CC 上下文传递、CO 式错误处理、rate limit 保护、orchestrator 异常保护、rollback_to_latest |
 | v0.1 | 2026-06-30 | 初始版本：Phase 1-4 开发完成，135 tests |
