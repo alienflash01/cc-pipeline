@@ -32,8 +32,9 @@ class CompiledStep:
 class PipelineCompiler:
     """Compiles a PipelineConfig + module name into a list of CompiledSteps."""
 
-    def __init__(self, config: PipelineConfig):
+    def __init__(self, config: PipelineConfig, config_dir: str | None = None):
         self.config = config
+        self.config_dir = Path(config_dir) if config_dir else None
 
     def compile_module(self, module_name: str) -> list[CompiledStep]:
         """Compile the pipeline for a specific module.
@@ -170,6 +171,10 @@ class PipelineCompiler:
 
         if step.prompt_file:
             path = Path(step.prompt_file)
+            if not path.is_absolute():
+                # Try CWD first, then config file directory
+                if not path.exists() and self.config_dir:
+                    path = self.config_dir / step.prompt_file
             if not path.exists():
                 raise FileNotFoundError(f"prompt_file not found: {step.prompt_file}")
             return path.read_text()

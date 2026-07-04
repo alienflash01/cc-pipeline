@@ -31,6 +31,7 @@ class Orchestrator:
         cc_model: str | None = None,
         resume: bool = False,
         verbose: bool = False,
+        config_path: str | None = None,
     ):
         self.config = config
         self.run_dir = Path(run_dir)
@@ -48,7 +49,7 @@ class Orchestrator:
             worktree_root=worktree_root,
             branch_prefix=config.output_branch_prefix,
         )
-        self.compiler = PipelineCompiler(config)
+        self.compiler = PipelineCompiler(config, config_dir=str(Path(config_path).parent) if config_path else None)
         self.cc_model = cc_model
 
         # Shutdown flag (self-contained, no cli import)

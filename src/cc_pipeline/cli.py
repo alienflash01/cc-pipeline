@@ -183,6 +183,7 @@ def _cmd_run(args) -> int:
         run_dir=str(run_dir),
         cc_model=cc_model,
         verbose=verbose,
+        config_path=args.config,
     )
 
     try:
@@ -261,6 +262,7 @@ def _cmd_resume(args) -> int:
         run_dir=str(run_dir),
         cc_model=cc_model,
         resume=True,
+        config_path=args.config,
     )
 
     try:
