@@ -241,6 +241,18 @@ def load_config(path: str) -> PipelineConfig:
                 stacklevel=2,
             )
 
+    # Validate executor types (fail early with helpful message)
+    _VALID_EXECUTORS = {"claude-code", "shell", "judge"}
+    for step in pipeline:
+        if step.executor not in _VALID_EXECUTORS:
+            # Suggest closest match
+            import difflib
+            suggestions = difflib.get_close_matches(step.executor, _VALID_EXECUTORS, n=1, cutoff=0.5)
+            hint = f" (did you mean '{suggestions[0]}'?)" if suggestions else f" Must be one of: {_VALID_EXECUTORS}"
+            raise ValueError(
+                f"Step '{step.id}': invalid executor '{step.executor}'{hint}"
+            )
+
     # Validate prompt_file paths exist (fail early, not at runtime)
     for step in pipeline:
         if step.prompt_file:

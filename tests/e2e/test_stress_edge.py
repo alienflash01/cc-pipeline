@@ -619,7 +619,6 @@ class TestEdgeConfigErrors:
 
     def test_invalid_executor_type(self, tmp_path):
         from cc_pipeline.config import load_config
-        from cc_pipeline.compiler import PipelineCompiler
 
         config_path = tmp_path / "c.yaml"
         config_path.write_text(
@@ -633,12 +632,12 @@ class TestEdgeConfigErrors:
             "    spec_id: s\n"
             "    source_dir: src/\n"
             "    source_files: [a.c]\n"
-            "    coverage: {line_threshold: 80, branch_threshold: 70}\n"
+            "    variables:\n"
+            "      line_threshold: 80\n"
+            "      branch_threshold: 70\n"
         )
-        config = load_config(str(config_path))
-        compiler = PipelineCompiler(config)
         with pytest.raises(ValueError, match="executor"):
-            compiler.compile_module("x")
+            load_config(str(config_path))
 
     def test_duplicate_step_ids(self, tmp_path):
         from cc_pipeline.config import load_config

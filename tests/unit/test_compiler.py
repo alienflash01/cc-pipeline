@@ -171,15 +171,12 @@ class TestPipelineCompiler:
         assert eval_idx > gen_idx
 
     def test_invalid_executor_raises(self, tmp_yaml):
-        """Invalid executor type raises ValueError."""
-        from cc_pipeline.compiler import PipelineCompiler
+        """Invalid executor type raises ValueError at config load."""
         from cc_pipeline.config import load_config
 
         bad_yaml = COMPILER_YAML.replace('executor: claude-code', 'executor: invalid-type', 1)
-        config = load_config(str(tmp_yaml(bad_yaml)))
-        compiler = PipelineCompiler(config)
         with pytest.raises(ValueError, match="executor"):
-            compiler.compile_module("auth")
+            load_config(str(tmp_yaml(bad_yaml)))
 
     def test_duplicate_step_id_raises(self, tmp_yaml):
         """Duplicate step IDs raise ValueError."""
