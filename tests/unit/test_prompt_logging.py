@@ -59,14 +59,16 @@ class TestLoggerLogPrompt:
         assert "ts" in entry
         assert entry["module"] == "payment"
 
-    def test_log_prompt_truncates_to_2000_chars(self, tmp_path):
+    def test_log_prompt_full_no_truncation(self, tmp_path):
+        """Full prompt is recorded without truncation."""
         from cc_pipeline.logger import Logger
 
         log = Logger(run_dir=str(tmp_path), module_name="auth")
-        log.log_prompt(step="generate", prompt="x" * 5000)
+        long_prompt = "x" * 5000
+        log.log_prompt(step="generate", prompt=long_prompt)
 
         entry = _last_entry(tmp_path / "auth" / "transcript.jsonl")
-        assert len(entry["prompt"]) == 2000
+        assert len(entry["prompt"]) == 5000
 
     def test_log_prompt_short_prompt_not_truncated(self, tmp_path):
         from cc_pipeline.logger import Logger

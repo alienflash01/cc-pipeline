@@ -43,25 +43,19 @@ class Logger:
         """Log a retry event."""
         self.event("retry", step=step, attempt=attempt, reason=reason)
 
-    def log_prompt(self, step: str, prompt: str) -> None:
-        """Log the full CC prompt sent for a step (truncated to 2000 chars).
-
-        Lets failed runs be reproduced/audited — the exact instruction handed
-        to Claude Code is preserved in the transcript.
-        """
-        self.event("cc_prompt", step=step, prompt=prompt[:2000])
+    def log_prompt(self, step: str, prompt: str):
+        """Log the full CC prompt sent for a step. No truncation."""
+        self.event("cc_prompt", step=step, prompt=prompt)
 
     def log_cc_result(self, step: str, cc_result) -> None:
-        """Log the CC execution result for a step (returncode/stdout/stderr).
+        """Log CC execution result (returncode/stdout/stderr) to transcript.
 
-        Captures the full CC runtime output so a failed or surprising run can
-        be audited from the transcript without re-executing. stdout/stderr are
-        truncated to keep the transcript readable.
+        stdout capped at 20000 chars, stderr at 10000 chars.
         """
         self.event(
             "cc_result",
             step=step,
             returncode=cc_result.returncode,
-            stdout=(cc_result.stdout or "")[:2000],
-            stderr=(cc_result.stderr or "")[:1000],
+            stdout=(cc_result.stdout or "")[:20000],
+            stderr=(cc_result.stderr or "")[:10000],
         )
