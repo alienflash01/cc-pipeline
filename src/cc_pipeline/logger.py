@@ -50,3 +50,18 @@ class Logger:
         to Claude Code is preserved in the transcript.
         """
         self.event("cc_prompt", step=step, prompt=prompt[:2000])
+
+    def log_cc_result(self, step: str, cc_result) -> None:
+        """Log the CC execution result for a step (returncode/stdout/stderr).
+
+        Captures the full CC runtime output so a failed or surprising run can
+        be audited from the transcript without re-executing. stdout/stderr are
+        truncated to keep the transcript readable.
+        """
+        self.event(
+            "cc_result",
+            step=step,
+            returncode=cc_result.returncode,
+            stdout=(cc_result.stdout or "")[:2000],
+            stderr=(cc_result.stderr or "")[:1000],
+        )

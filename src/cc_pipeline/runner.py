@@ -13,6 +13,7 @@ import subprocess
 import re
 import time as _time_mod
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -146,7 +147,8 @@ class ModuleRunner:
 
                 if self.verbose:
                     file_info = f" [{step.loop_file}]" if step.loop_file else ""
-                    print(f"  [{self.module_name}] {step.step_id:12} START{file_info}")
+                    ts = datetime.now().strftime("%H:%M:%S")
+                    print(f"  [{ts}] [{self.module_name}] {step.step_id:12} START{file_info}")
 
                 # Execute the step with layered error handling
                 exec_result = self._execute_step(step)
@@ -212,7 +214,8 @@ class ModuleRunner:
                     passed = True
                     if self.verbose:
                         file_info = f" [{step.loop_file}]" if step.loop_file else ""
-                        print(f"  [{self.module_name}] {step.step_id:12} PASS{file_info}")
+                        ts = datetime.now().strftime("%H:%M:%S")
+                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} PASS{file_info}")
                     break
                 else:
                     if retry_budget > 0:
@@ -399,6 +402,7 @@ class ModuleRunner:
 
         # Layer 2: CC non-zero exit → immediate failure
         if cc_result.returncode != 0:
+            self.logger.log_cc_result(step=step.step_id, cc_result=cc_result)
             return ExecResult(
                 ExecOutcome.CC_FAILED, cc_result,
                 f"CC exit {cc_result.returncode}: {cc_result.stderr[:120]}",
@@ -412,6 +416,7 @@ class ModuleRunner:
             )
 
         # Success
+        self.logger.log_cc_result(step=step.step_id, cc_result=cc_result)
         return ExecResult(ExecOutcome.SUCCESS, cc_result)
 
     def _check_postcondition(self, step: CompiledStep) -> PostconditionResult:

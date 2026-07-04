@@ -738,6 +738,22 @@ def _cmd_transcript(args) -> int:
                     print(f"   │ {line}")
                 print()
 
+            elif event == "cc_result":
+                rc = d.get("returncode", "")
+                stdout = d.get("stdout", "") or ""
+                stderr = d.get("stderr", "") or ""
+                print(f"   [CC RESULT] returncode={rc}")
+                if stdout:
+                    print(f"   ┌─ stdout ──────────────")
+                    for line in stdout.splitlines():
+                        print(f"   │ {line}")
+                    print(f"   └───────────────────────")
+                if stderr:
+                    print(f"   ┌─ stderr ──────────────")
+                    for line in stderr.splitlines():
+                        print(f"   │ {line}")
+                    print(f"   └───────────────────────")
+
             elif event == "pass":
                 info = d.get("info", {})
                 reason = info.get("reason", "") if isinstance(info, dict) else str(info)
