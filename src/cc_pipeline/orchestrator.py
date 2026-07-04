@@ -30,11 +30,13 @@ class Orchestrator:
         worktree_root: str | None = None,
         cc_model: str | None = None,
         resume: bool = False,
+        verbose: bool = False,
     ):
         self.config = config
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
+        self.verbose = verbose
         self.concurrency = config.concurrency
         self.run_id = "unknown"  # set by CLI
         # Worktree root: explicit arg > config.worktree_root > run_dir/worktrees
@@ -211,6 +213,7 @@ class Orchestrator:
                 run_dir=str(self.run_dir),
                 cc_executor=CCExecutor(model=self.cc_model),
                 shell_executor=ShellExecutor(),
+                verbose=self.verbose,
             )
 
             # Run pipeline

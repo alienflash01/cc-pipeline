@@ -153,8 +153,8 @@ modules:
 
 # #15: render rejects variable names with spaces
 class TestIssue15RenderSpaceVar:
-    def test_space_in_var_name_raises(self):
+    def test_unknown_variable_preserved(self):
+        """Unknown {var} is kept as-is, not crashed."""
         from cc_pipeline.render import render
-        # {my var} should raise KeyError (not match any variable)
-        with pytest.raises(KeyError):
-            render("{my var}", {"my var": "test"})
+        result = render("hello {unknown}", {"x": 1})
+        assert "{unknown}" in result

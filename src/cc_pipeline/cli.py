@@ -41,6 +41,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--run-dir", default=None, help="Run output directory")
     run_parser.add_argument("--daemon", action="store_true", default=False,
                             help="Run as daemon (fork to background)")
+    run_parser.add_argument("--verbose", "-v", action="store_true", default=False,
+                            help="Print step-by-step progress to terminal")
 
     # resume subcommand
     resume_parser = subparsers.add_parser("resume", help="Resume an interrupted run")
@@ -122,7 +124,7 @@ def _cmd_run(args) -> int:
         return 1
 
     # Set up run directory
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    now = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     run_dir = Path(args.run_dir) if args.run_dir else Path("~/.cc-pipeline/runs").expanduser()
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -166,10 +168,14 @@ def _cmd_run(args) -> int:
     cc_model = args.model or config.model or None
 
     # Run orchestrator (checks _shutdown_requested between modules)
+    verbose = getattr(args, "verbose", False)
+    if verbose:
+        print(f"  verbose mode ON — printing step progress")
     orch = Orchestrator(
         config=config,
         run_dir=str(run_dir),
         cc_model=cc_model,
+        verbose=verbose,
     )
 
     try:
@@ -586,7 +592,7 @@ def _cmd_report(args) -> int:
     if args.format == "html":
         return _write_html_report(args, run_dir, state, run_id, modules)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
     report = _build_report(run_id, timestamp, modules, run_dir)
 
     print(report)

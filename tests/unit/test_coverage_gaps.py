@@ -198,7 +198,7 @@ class TestRenderNoAssertFixes:
         assert "Alice" in result
         assert "30" in result
 
-    def test_unknown_variable_raises(self):
+    def test_unknown_variable_preserved(self):
         from cc_pipeline.render import render
-        with pytest.raises(KeyError):
-            render("Hello {nonexistent}", {})
+        result = render("Hello {nonexistent}", {})
+        assert "{nonexistent}" in result

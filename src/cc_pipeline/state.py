@@ -26,7 +26,7 @@ class StateManager:
         with self._lock:
             state = {
                 "run_id": run_id,
-                "saved_at": datetime.now(timezone.utc).isoformat(),
+                "saved_at": datetime.now().isoformat(),
                 "modules": modules,
             }
             with open(self.state_file, "w") as f:
@@ -67,7 +67,7 @@ class StateManager:
             if module_name not in state["modules"]:
                 state["modules"][module_name] = {}
             state["modules"][module_name].update(kwargs)
-            state["saved_at"] = datetime.now(timezone.utc).isoformat()
+            state["saved_at"] = datetime.now().isoformat()
             with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2, ensure_ascii=False)
 
@@ -84,7 +84,7 @@ class StateManager:
             if state is None:
                 state = {"run_id": run_id, "saved_at": "", "modules": {}}
             state["run_id"] = run_id
-            state["saved_at"] = datetime.now(timezone.utc).isoformat()
+            state["saved_at"] = datetime.now().isoformat()
             with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2, ensure_ascii=False)
 

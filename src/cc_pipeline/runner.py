@@ -100,6 +100,7 @@ class ModuleRunner:
         run_dir: str,
         cc_executor: CCExecutor | None = None,
         shell_executor: ShellExecutor | None = None,
+        verbose: bool = False,
     ):
         self.steps = steps
         self.module_name = module_name
@@ -109,6 +110,7 @@ class ModuleRunner:
         self.shell_executor = shell_executor or ShellExecutor()
         self.logger = Logger(run_dir=run_dir, module_name=module_name)
         self.git_checkpoint = GitCheckpoint(worktree_path)
+        self.verbose = verbose
 
     def run(self) -> dict:
         """Execute all steps sequentially. Supports on_failure jump-back.
@@ -141,6 +143,10 @@ class ModuleRunner:
 
                 self.logger.event("step_start", step=step.step_id, attempt=current_attempt,
                                   loop_file=step.loop_file)
+
+                if self.verbose:
+                    file_info = f" [{step.loop_file}]" if step.loop_file else ""
+                    print(f"  [{self.module_name}] {step.step_id:12} START{file_info}")
 
                 # Execute the step with layered error handling
                 exec_result = self._execute_step(step)
@@ -204,6 +210,9 @@ class ModuleRunner:
                     self._append_progress(step, "PASS", current_attempt)
                     completed = step_idx + 1
                     passed = True
+                    if self.verbose:
+                        file_info = f" [{step.loop_file}]" if step.loop_file else ""
+                        print(f"  [{self.module_name}] {step.step_id:12} PASS{file_info}")
                     break
                 else:
                     if retry_budget > 0:

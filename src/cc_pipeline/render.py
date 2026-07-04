@@ -54,7 +54,12 @@ def render(
             val = variables[var_name]
             result.append("" if val is None else str(val))
         else:
-            raise KeyError(f"Unknown variable: {{{var_name}}}")
+            # Unknown variable — preserve original, warn user
+            import logging
+            logging.getLogger("cc_pipeline.render").warning(
+                "Unknown variable {%s} in prompt — kept as-is (not replaced)", var_name
+            )
+            result.append(match.group(0))
         
         last_end = match.end()
     

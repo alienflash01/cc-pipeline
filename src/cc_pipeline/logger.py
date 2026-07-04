@@ -22,7 +22,7 @@ class Logger:
     def event(self, event: str, **kwargs) -> None:
         """Write a generic event to the JSONL transcript."""
         entry = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now().isoformat(),
             "module": self.module_name,
             "event": event,
             **kwargs,

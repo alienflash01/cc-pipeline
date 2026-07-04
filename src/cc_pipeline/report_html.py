@@ -245,7 +245,7 @@ def build_html_report(
     """
     modules = state.get("modules", {}) if state else {}
     transcripts = transcripts or {}
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     parts: list[str] = []
     parts.append("<!DOCTYPE html>")

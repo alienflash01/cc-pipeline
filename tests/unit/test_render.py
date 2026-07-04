@@ -64,11 +64,11 @@ class TestVariableRenderer:
         )
         assert "not found" in result.lower() or "missing" in result.lower() or "unavailable" in result.lower()
 
-    def test_unknown_variable_raises(self):
-        """Unknown variable raises KeyError."""
+    def test_unknown_variable_preserved(self):
+        """Unknown variables are preserved as-is, not crashed."""
         from cc_pipeline.render import render
-        with pytest.raises(KeyError):
-            render("hello {unknown_var}", {})
+        result = render("Hello {nonexistent}", {})
+        assert "{nonexistent}" in result
 
     def test_no_variables_returns_unchanged(self):
         """Text without variables returns unchanged."""
