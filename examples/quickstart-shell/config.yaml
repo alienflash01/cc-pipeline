@@ -1,0 +1,34 @@
+# Quickstart — shell-only pipeline.
+#
+# Demonstrates cc-pipeline orchestration WITHOUT Claude Code and WITHOUT any
+# API key. Every step runs a plain shell command. Useful for learning the
+# pipeline / postcondition / dependency mechanics with zero setup.
+#
+# Run:  bash examples/quickstart-shell/run.sh
+
+repo: .
+base_branch: main
+concurrency: 1
+
+pipeline:
+  # Step 1: write a file.
+  - id: write
+    executor: shell
+    command: "echo 'hello world' > output.txt"
+
+  # Step 2: confirm the file contains 'hello' (postcondition checks exit code).
+  - id: verify
+    executor: shell
+    command: "grep 'hello' output.txt"
+    postcondition:
+      shell: "grep -q 'hello' output.txt"   # exit 0 ⇒ pass
+
+  # Step 3: count lines.
+  - id: count
+    executor: shell
+    command: "wc -l output.txt"
+
+# One nominal module (no source_files needed for shell-only steps).
+modules:
+  - name: demo
+    source_dir: .

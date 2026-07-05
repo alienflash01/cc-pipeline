@@ -1,0 +1,45 @@
+# Quickstart — real Claude Code orchestration.
+#
+# Requires the Claude Code CLI on PATH and a valid ANTHROPIC_API_KEY.
+# A 3-step pipeline (scaffold → generate → evaluate) that generates pytest
+# tests for two small Python modules, looping per source file.
+#
+# Run:  bash examples/quickstart-cc/run.sh
+
+repo: .
+base_branch: main
+concurrency: 1
+
+pipeline:
+  # Step 1: scaffold a test layout for the module.
+  - id: scaffold
+    executor: claude-code
+    prompt_file: prompts/scaffold.md
+
+  # Step 2: generate one pytest file per source file (per_file loop).
+  - id: generate
+    executor: claude-code
+    loop: per_file
+    prompt_file: prompts/generate.md
+    depends_on: scaffold
+
+  # Step 3: evaluate test quality; on failure jump back to regenerate.
+  - id: evaluate
+    executor: claude-code
+    prompt_file: prompts/evaluate.md
+    depends_on: generate
+    on_failure: generate
+
+# Two Python modules. source_files use the dict form to show per-file params.
+modules:
+  - name: math_utils
+    source_dir: src/
+    source_files:
+      - path: math_utils.py
+        difficulty: easy
+
+  - name: string_utils
+    source_dir: src/
+    source_files:
+      - path: string_utils.py
+        difficulty: easy

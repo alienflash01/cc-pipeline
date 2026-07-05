@@ -61,7 +61,7 @@ class PipelineConfig:
     base_branch: str = "main"
     concurrency: int = 5
     max_retries: int = 3
-    output_branch_prefix: str = "ut-auto"
+    output_branch_prefix: str = "cc-auto"
     model: str = ""  # global default model (empty = CC decides)
     worktree_root: str = ""  # where to create worktrees (empty = framework decides)
     pr_labels: list[str] = field(default_factory=list)
@@ -133,6 +133,14 @@ def load_config(path: str) -> PipelineConfig:
             on_failure_max_jumps=step_raw.get("on_failure_max_jumps", 2),
             output_prompt=step_raw.get("output_prompt"),
         )
+        # Warn when both prompt and prompt_file are set (prompt wins)
+        if step.prompt and step.prompt_file:
+            import warnings as _pp_w
+            _pp_w.warn(
+                f"Step {step.id}: both prompt and prompt_file set — "
+                f"prompt takes priority, prompt_file ignored",
+                stacklevel=2,
+            )
         pipeline.append(step)
     
     # Parse modules
@@ -270,7 +278,7 @@ def load_config(path: str) -> PipelineConfig:
         base_branch=raw.get("base_branch", "main"),
         concurrency=raw.get("concurrency", 5),
         max_retries=raw.get("max_retries", 3),
-        output_branch_prefix=raw.get("output_branch_prefix", "ut-auto"),
+        output_branch_prefix=raw.get("output_branch_prefix", "cc-auto"),
         model=raw.get("model", ""),
         worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
         pr_labels=raw.get("pr_labels", []),
