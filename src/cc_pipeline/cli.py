@@ -83,6 +83,15 @@ def _build_parser() -> argparse.ArgumentParser:
     transcript_parser.add_argument("--run-dir", required=True, help="Run directory")
     transcript_parser.add_argument("--module", default=None, help="Module name (default: all modules)")
 
+    # init subcommand — interactive config generator
+    init_parser = subparsers.add_parser("init", help="Generate a starter config interactively")
+    init_parser.add_argument("--template", default=None, help="Config template (not yet supported)")
+    init_parser.add_argument("--output-dir", default=".", help="Where to write generated files (default: .)")
+
+    # check subcommand — environment + config sanity check
+    check_parser = subparsers.add_parser("check", help="Check environment and (optionally) a config")
+    check_parser.add_argument("--config", default=None, help="Config YAML to validate against the environment")
+
     return parser
 
 
@@ -111,6 +120,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_uninstall(args)
     if args.command == "transcript":
         return _cmd_transcript(args)
+    if args.command == "init":
+        return _cmd_init(args)
+    if args.command == "check":
+        return _cmd_check(args)
 
     return 0
 
@@ -1023,5 +1036,306 @@ def _cmd_transcript(args) -> int:
     return 0
 
 
+# --- init command: interactive config generator -----------------------------
+
+# Prompt templates. Written VERBATIM to disk — their {var} are render variables
+# consumed by cc-pipeline at runtime, so they must survive as literal text.
+_INIT_PROMPT_SCAFFOLD = """\
+你是测试工程师。
+为模块 {module} 创建测试脚手架。
+源码目录：{source_dir}
+创建 tests/ 目录和必要的编译配置。
+"""
+
+_INIT_PROMPT_GENERATE = """\
+你是测试工程师。
+为文件 {source_dir}/{file} 生成单元测试。
+使用 {assert_macro} 宏做断言。
+先运行已有测试确认编译通过，再生成新测试。
+将测试文件写到 tests/ 目录。
+"""
+
+_INIT_PROMPT_EVALUATE = """\
+你是测试质量评估员。
+评估模块 {module} 的测试质量。
+检查：断言密度、边界覆盖、测试独立性。
+将评估结果写入 .pipeline/evaluate.json（包含 score 字段，0-100）。
+"""
+
+_INIT_PROMPT_REVIEW = """\
+你是代码审查专家。
+审查模块 {module} 的代码。
+审查重点：{review_focus}
+将审查结果写入 .pipeline/review.json。
+"""
+
+_INIT_PROMPT_STEP1 = """\
+为模块 {module} 执行任务。
+源码目录：{source_dir}
+"""
+
+# Config templates. Collected-value placeholders ({repo_path}, {concurrency},
+# {first_module}, {source_dir}, {assert_macro}) are substituted with the user's
+# answers via str.replace (NOT str.format) so the prompts' literal {var} survive.
+_INIT_CONFIG_UT = """\
+repo: {repo_path}
+base_branch: main
+concurrency: {concurrency}
+output_branch_prefix: cc-auto
+
+pipeline:
+  - id: scaffold
+    executor: claude-code
+    prompt_file: prompts/scaffold.md
+    output: scaffold.json
+    postcondition:
+      shell: "test -d tests"
+
+  - id: generate
+    executor: claude-code
+    loop: per_file
+    prompt_file: prompts/generate.md
+    output: generate.json
+    depends_on: scaffold
+
+  - id: evaluate
+    executor: claude-code
+    prompt_file: prompts/evaluate.md
+    output: evaluate.json
+    depends_on: generate
+    on_failure: generate
+
+modules:
+  - name: {first_module}
+    source_dir: {source_dir}
+    source_files:
+      - path: example.c
+        assert_macro: {assert_macro}
+"""
+
+_INIT_CONFIG_REVIEW = """\
+repo: {repo_path}
+base_branch: main
+concurrency: {concurrency}
+
+pipeline:
+  - id: review
+    executor: claude-code
+    prompt_file: prompts/review.md
+    output: review.json
+
+modules:
+  - name: {first_module}
+    source_dir: {source_dir}
+"""
+
+_INIT_CONFIG_CUSTOM = """\
+repo: {repo_path}
+base_branch: main
+concurrency: {concurrency}
+
+pipeline:
+  - id: step1
+    executor: claude-code
+    prompt_file: prompts/step1.md
+
+modules:
+  - name: {first_module}
+    source_dir: {source_dir}
+"""
+
+
+def _ask(prompt: str, default: str) -> str:
+    """Prompt for input, returning ``default`` on an empty answer."""
+    return input(prompt) or default
+
+
+def _cmd_init(args) -> int:
+    """Interactive config generator.
+
+    Walks the user through a short dialog and writes a runnable ``config.yaml``
+    plus a ``prompts/`` directory. Three task types are supported:
+      1 = UT generation (scaffold → generate → evaluate)
+      2 = code review
+      3 = custom single-step
+    """
+    print("🧩 cc-pipeline 配置生成器")
+
+    if getattr(args, "template", None):
+        print("Note: --template not yet supported")
+
+    repo = _ask("项目路径 repo（默认 '.'）: ", ".")
+    task_type = _ask("任务类型 1=UT生成 2=代码审查 3=自定义: ", "1").strip()
+
+    source_dir_default = "src/"
+    modules_default = "auth"
+
+    source_dir = _ask(f'source_dir（默认 "{source_dir_default}"）: ', source_dir_default)
+    modules_str = _ask(f'模块列表逗号分隔（默认 "{modules_default}"）: ', modules_default)
+    first_module = modules_str.split(",")[0].strip() or modules_default
+
+    # task-type-specific extras + pick the templates to write
+    if task_type == "2":
+        review_focus = _ask('review_focus（默认 "安全性"）: ', "安全性")
+        config_template = _INIT_CONFIG_REVIEW
+        prompts = {"review.md": _INIT_PROMPT_REVIEW}
+        placeholders = {"review_focus": review_focus}
+    elif task_type == "3":
+        config_template = _INIT_CONFIG_CUSTOM
+        prompts = {"step1.md": _INIT_PROMPT_STEP1}
+        placeholders = {}
+    else:  # "1" (UT) — also the fallback default
+        assert_macro = _ask('assert_macro（默认 "CHECK"）: ', "CHECK")
+        config_template = _INIT_CONFIG_UT
+        prompts = {
+            "scaffold.md": _INIT_PROMPT_SCAFFOLD,
+            "generate.md": _INIT_PROMPT_GENERATE,
+            "evaluate.md": _INIT_PROMPT_EVALUATE,
+        }
+        placeholders = {"assert_macro": assert_macro}
+
+    concurrency = _ask('concurrency（默认 "5"）: ', "5")
+
+    # Where to write. output_dir defaults to "."; resolve to an absolute path so
+    # the generated files land predictably regardless of CWD.
+    output_dir = Path(getattr(args, "output_dir", ".") or ".").resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    prompts_dir = output_dir / "prompts"
+    prompts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Substitute collected values into config.yaml (str.replace keeps {var}).
+    config_text = config_template
+    for key, val in {
+        "repo_path": repo,
+        "concurrency": concurrency,
+        "first_module": first_module,
+        "source_dir": source_dir,
+        **placeholders,
+    }.items():
+        config_text = config_text.replace("{" + key + "}", str(val))
+
+    written_files: list[str] = []
+    config_path = output_dir / "config.yaml"
+    config_path.write_text(config_text)
+    written_files.append(str(config_path))
+
+    # Prompt files are written verbatim (render variables preserved).
+    for name, body in prompts.items():
+        ppath = prompts_dir / name
+        ppath.write_text(body)
+        written_files.append(str(ppath))
+
+    print("✅ 生成完成")
+    print("生成的文件：")
+    for f in written_files:
+        print(f"  {f}")
+    print("运行: cc-pipeline run config.yaml --dry-run")
+    return 0
+
+
+# --- check command: environment + config sanity ------------------------------
+
+
+def _cmd_check(args) -> int:
+    """Check the environment (and optionally a config) for readiness.
+
+    Always runs a set of environment probes; with ``--config`` it additionally
+    validates the config loads, the repo/branch exist, prompt_files are present,
+    and the pipeline compiles. Output is one line per check followed by a
+    ``Summary: N/M checks passed`` tally. Checks are advisory — always returns 0.
+    """
+    print("🔍 cc-pipeline Environment Check\n")
+
+    passed = 0
+    total = 0
+
+    def report(name: str, ok: bool, detail: str = "") -> None:
+        nonlocal passed, total
+        total += 1
+        if ok:
+            passed += 1
+        mark = "✅" if ok else "❌"
+        suffix = f" {detail}" if detail else ""
+        print(f"  {name}: {mark}{suffix}")
+
+    # --- Environment probes (always run) ---
+    py_version = sys.version.split()[0]
+    report(f"Python {py_version}", True)
+
+    git_path = shutil.which("git")
+    report("Git", git_path is not None, git_path or "not found")
+
+    claude_path = shutil.which("claude")
+    report("Claude Code CLI", claude_path is not None, claude_path or "not found")
+
+    git_user = ""
+    if git_path:
+        res = subprocess.run(
+            ["git", "config", "user.name"], capture_output=True, text=True
+        )
+        git_user = res.stdout.strip()
+    report("Git user.name", bool(git_user), git_user or "not set")
+
+    du = shutil.disk_usage(str(Path.cwd()))
+    free_gb = du.free / (1024 ** 3)
+    report("Disk space", free_gb > 1, f"{free_gb:.1f} GB free")
+
+    # --- Config-specific probes (only with --config) ---
+    if getattr(args, "config", None):
+        config_path = args.config
+        cfg = None
+        try:
+            from cc_pipeline.config import load_config
+
+            cfg = load_config(config_path)
+            report("Config load", True, "valid")
+        except FileNotFoundError:
+            report("Config load", False, "file not found")
+        except ValueError as e:
+            report("Config load", False, f"invalid: {e}")
+        except Exception as e:  # noqa: BLE001 — surface any other failure
+            report("Config load", False, f"error: {e}")
+
+        if cfg is not None:
+            repo_path = Path(cfg.repo)
+            report("Repo exists", repo_path.is_dir(), cfg.repo)
+
+            branch_ok = False
+            if repo_path.is_dir() and (repo_path / ".git").exists():
+                rev = subprocess.run(
+                    ["git", "-C", str(repo_path), "rev-parse", "--verify",
+                     cfg.base_branch],
+                    capture_output=True,
+                )
+                branch_ok = rev.returncode == 0
+            report("base_branch exists", branch_ok, cfg.base_branch)
+
+            missing = []
+            cfg_dir = Path(config_path).parent
+            for step in cfg.pipeline:
+                if step.prompt_file:
+                    p = Path(step.prompt_file)
+                    if not p.exists() and not (cfg_dir / step.prompt_file).exists():
+                        missing.append(step.prompt_file)
+            report("prompt_files present", not missing,
+                   "all found" if not missing else f"missing: {','.join(missing)}")
+
+            # dry-run preview = does every module compile?
+            try:
+                from cc_pipeline.compiler import PipelineCompiler
+
+                compiler = PipelineCompiler(cfg, str(cfg_dir))
+                for module in cfg.modules:
+                    compiler.compile_module(module.name)
+                report("Dry-run preview", True, "compiles")
+            except ValueError as e:
+                report("Dry-run preview", False, f"compile error: {e}")
+
+    print()
+    print(f"  Summary: {passed}/{total} checks passed")
+    return 0
+
+
 if __name__ == "__main__":
     sys.exit(main())
+

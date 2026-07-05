@@ -113,6 +113,8 @@ def load_config(path: str) -> PipelineConfig:
         for key in step_raw:
             if key not in _KNOWN_STEP_FIELDS:
                 _w.warn(f"Unknown field '{key}' in step '{step_raw.get('id','?')}' — ignored", stacklevel=2)
+        if "id" not in step_raw or not step_raw["id"]:
+            raise ValueError(f"Pipeline step missing required field: id (step data: {step_raw})")
         step = PipelineStep(
             id=step_raw["id"],
             executor=step_raw.get("executor", "claude-code"),
@@ -262,7 +264,14 @@ def load_config(path: str) -> PipelineConfig:
             )
 
     # Validate prompt_file paths exist (fail early, not at runtime)
+    _all_step_ids = {s.id for s in pipeline}
     for step in pipeline:
+        # Validate on_failure target exists
+        if step.on_failure and step.on_failure not in _all_step_ids:
+            raise ValueError(
+                f"Step '{step.id}': on_failure '{step.on_failure}' "
+                f"does not match any step id"
+            )
         if step.prompt_file:
             from pathlib import Path as _P
             p = _P(step.prompt_file)
