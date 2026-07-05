@@ -44,6 +44,8 @@ def _build_parser() -> argparse.ArgumentParser:
                             help="Run as daemon (fork to background)")
     run_parser.add_argument("--verbose", "-v", action="store_true", default=False,
                             help="Print step-by-step progress to terminal")
+    run_parser.add_argument("--dry-run", action="store_true", default=False,
+                            help="Preview pipeline without executing CC")
 
     # resume subcommand
     resume_parser = subparsers.add_parser("resume", help="Resume an interrupted run")
@@ -167,6 +169,167 @@ def _preflight_check(config, args) -> bool:
     return True
 
 
+def _do_dry_run(config, config_path) -> int:
+    """Preview the pipeline without executing anything.
+
+    Compiles each module's steps and prints:
+      1. The step list (per_file steps annotated)
+      2. A per-module file table (string list → File column only;
+         dict entries → one column per key, ``path`` shown as ``File``)
+      3. Estimated CC call count (non-loop = 1/module, per_file = files/module)
+      4. Global variables
+
+    Never creates a run_dir / worktree, never invokes Claude Code.
+    Returns 0 on success, 1 if compilation fails (ValueError).
+    """
+    from cc_pipeline.compiler import PipelineCompiler
+
+    config_dir = str(Path(config_path).parent) if config_path else None
+    compiler = PipelineCompiler(config, config_dir)
+
+    # Compile every module up front so a compile error bails before printing.
+    try:
+        for module in config.modules:
+            compiler.compile_module(module.name)
+    except ValueError as e:
+        print(f"Error: Config compilation failed: {e}", file=sys.stderr)
+        return 1
+
+    print()
+    print("📊 Pipeline Preview (dry-run)")
+    print("═" * 47)
+    print()
+
+    # 1. Step list (per_file annotated), from the shared pipeline definition
+    step_labels = []
+    for step in config.pipeline:
+        label = step.id + ("(per_file)" if step.loop == "per_file" else "")
+        step_labels.append(label)
+    print("  Steps: " + " → ".join(step_labels))
+    print()
+
+    # 2. Per-module file tables (skipped when source_files is empty)
+    for module in config.modules:
+        if not module.source_files:
+            continue
+        _print_module_table(module)
+
+    # 3. Estimated CC calls
+    _print_estimate(config)
+    print()
+
+    # 4. Global variables
+    _print_variables(config)
+    print()
+
+    print("  ✅ Config valid. Run without --dry-run to execute.")
+    return 0
+
+
+def _print_module_table(module) -> None:
+    """Print ``Module: <name> (<N> files)`` followed by the file table."""
+    print(f"  Module: {module.name} ({len(module.source_files)} files)")
+    columns, rows = _table_columns_rows(module.source_files)
+    for line in _render_table(columns, rows):
+        print("  " + line)
+    print()
+
+
+def _table_columns_rows(source_files) -> tuple[list[str], list[dict]]:
+    """Build table columns + row dicts from source_files.
+
+    - Plain string list → single ``File`` column.
+    - Dict entries → one column per key (union across entries, insertion order),
+      with ``path`` rendered as the ``File`` column.
+    """
+    has_dict = any(isinstance(e, dict) for e in source_files)
+    if not has_dict:
+        return ["File"], [{"File": str(sf)} for sf in source_files]
+
+    key_order: list[str] = []
+    seen: set[str] = set()
+    for entry in source_files:
+        if isinstance(entry, dict):
+            for k in entry.keys():
+                if k not in seen:
+                    seen.add(k)
+                    key_order.append(k)
+
+    # path → File, placed first
+    columns = (["File"] if "path" in seen else []) + [
+        k for k in key_order if k != "path"
+    ]
+
+    rows: list[dict] = []
+    for entry in source_files:
+        if isinstance(entry, dict):
+            row = {}
+            for col in columns:
+                row[col] = str(entry.get("path" if col == "File" else col, ""))
+            rows.append(row)
+        else:
+            # string entry mixed among dicts: only File is populated
+            rows.append({col: (str(entry) if col == "File" else "") for col in columns})
+    return columns, rows
+
+
+def _render_table(columns: list[str], rows: list[dict]) -> list[str]:
+    """Render columns + rows as a box-drawing table (list of lines)."""
+    widths = []
+    for col in columns:
+        w = len(col)
+        for row in rows:
+            w = max(w, len(str(row.get(col, ""))))
+        widths.append(w)
+
+    def border(left: str, cross: str, right: str) -> str:
+        return left + cross.join("─" * (w + 2) for w in widths) + right
+
+    def row_line(row: dict) -> str:
+        cells = [" " + str(row.get(col, "")).ljust(widths[i]) + " "
+                 for i, col in enumerate(columns)]
+        return "│" + "│".join(cells) + "│"
+
+    lines = [border("┌", "┬", "┐"), row_line({col: col for col in columns})]
+    if rows:
+        lines.append(border("├", "┼", "┤"))
+        lines.extend(row_line(r) for r in rows)
+    lines.append(border("└", "┴", "┘"))
+    return lines
+
+
+def _print_estimate(config) -> None:
+    """Print the estimated CC call count + per-step breakdown.
+
+    Non-loop step = 1 call per module; per_file step = len(source_files) per module.
+    """
+    n_modules = len(config.modules)
+    total = 0
+    pieces: list[str] = []
+    for step in config.pipeline:
+        if step.loop == "per_file":
+            calls = sum(len(m.source_files) for m in config.modules)
+        else:
+            calls = n_modules
+        total += calls
+        pieces.append(f"{step.id}={calls}")
+    print(f"  Estimated: {total} CC calls")
+    print("  (" + " + ".join(pieces) + ")")
+
+
+def _print_variables(config) -> None:
+    """Print global config variables."""
+    print("  Variables:")
+    items: list[str] = [f"repo={config.repo}", f"base_branch={config.base_branch}"]
+    if config.model:
+        items.append(f"model={config.model}")
+    if config.worktree_root:
+        items.append(f"worktree_root={config.worktree_root}")
+    items.append(f"concurrency={config.concurrency}")
+    for item in items:
+        print("    " + item)
+
+
 def _cmd_run(args) -> int:
     """Execute the run command, optionally as daemon."""
     from cc_pipeline.config import load_config
@@ -187,6 +350,10 @@ def _cmd_run(args) -> int:
 
     # Preflight: warn on environment issues (missing CC CLI, bad repo/branch, ...)
     _preflight_check(config, args)
+
+    # Dry-run: preview only — no run_dir, no worktree, no CC calls
+    if getattr(args, "dry_run", False):
+        return _do_dry_run(config, args.config)
 
     # Set up run directory
     now = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
