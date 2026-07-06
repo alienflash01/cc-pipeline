@@ -149,6 +149,11 @@ class PipelineCompiler:
         # Sort by depends_on (topological-ish)
         compiled = self._sort_by_dependencies(compiled)
 
+        # Reorder per_file expansions so each file walks the full flow before the
+        # next file starts (sequential), instead of all-files-then-next-step (batched).
+        if module.file_order == "sequential":
+            compiled = self._reorder_sequential(compiled)
+
         return compiled
 
     def _resolve_prompt(self, step: PipelineStep) -> str:
@@ -189,6 +194,48 @@ class PipelineCompiler:
             result["shell"] = render(result["shell"], variables)
         if "expect" in result:
             result["expect"] = render(result["expect"], variables)
+        return result
+
+    def _reorder_sequential(self, steps: list[CompiledStep]) -> list[CompiledStep]:
+        """Reorder so each file walks every per_file step before the next file starts.
+
+        Operates on a batched expansion (already dependency-sorted). Consecutive
+        per_file steps form a group; within each group the order changes from
+        "all files for stepA, then all files for stepB" to "all steps for file a,
+        then all steps for file b, ...". Non-loop steps (loop_file is None) keep
+        their position and break groups.
+
+          batched:     [scaffold, gen[a], gen[b], gen[c], eval[a], eval[b], eval[c], report]
+          sequential:  [scaffold, gen[a], eval[a], gen[b], eval[b], gen[c], eval[c], report]
+        """
+        result: list[CompiledStep] = []
+        i = 0
+        n = len(steps)
+        while i < n:
+            if steps[i].loop_file is None:
+                # Non-loop step: keep in place.
+                result.append(steps[i])
+                i += 1
+                continue
+            # Collect the maximal run of consecutive per_file steps.
+            j = i
+            while j < n and steps[j].loop_file is not None:
+                j += 1
+            run = steps[i:j]
+            # File order = order of first appearance within the run.
+            file_order: list[str] = []
+            seen: set[str] = set()
+            for s in run:
+                if s.loop_file not in seen:
+                    seen.add(s.loop_file)
+                    file_order.append(s.loop_file)
+            # Bucket by file (preserves per-file step order), then emit per file.
+            by_file: dict[str, list[CompiledStep]] = {}
+            for s in run:
+                by_file.setdefault(s.loop_file, []).append(s)
+            for f in file_order:
+                result.extend(by_file[f])
+            i = j
         return result
 
     def _sort_by_dependencies(self, steps: list[CompiledStep]) -> list[CompiledStep]:

@@ -52,6 +52,7 @@ class Module:
     source_dir: str = ""
     source_files: list = field(default_factory=list)  # list[str | dict]
     variables: dict = field(default_factory=dict)
+    file_order: str = "batched"  # 'batched' | 'sequential' — per_file expansion order
 
 
 @dataclass
@@ -191,6 +192,7 @@ def load_config(path: str) -> PipelineConfig:
             source_dir=mod_raw.get("source_dir", ""),
             source_files=mod_raw.get("source_files", []),
             variables=variables,
+            file_order=mod_raw.get("file_order", "batched"),
         )
         modules.append(mod)
     
@@ -241,6 +243,14 @@ def load_config(path: str) -> PipelineConfig:
                     f"Invalid source_file '{sf}' in module '{mod.name}': "
                     f"no path traversal or slashes allowed"
                 )
+
+    # Validate module file_order
+    for mod in modules:
+        if mod.file_order not in ("batched", "sequential"):
+            raise ValueError(
+                f"Module '{mod.name}': file_order must be 'batched' or 'sequential', "
+                f"got '{mod.file_order}'"
+            )
 
     # Validate timeout fields
     for step in pipeline:
