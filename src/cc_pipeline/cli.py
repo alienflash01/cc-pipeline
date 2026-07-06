@@ -423,6 +423,7 @@ def _cmd_run(args) -> int:
         verbose=verbose,
         config_path=args.config,
     )
+    orch.run_id = now
 
     # Startup banner — printed unconditionally so the terminal is never silent
     # between hitting Enter and the first module finishing (BP-3.1).
@@ -515,6 +516,14 @@ def _cmd_resume(args) -> int:
         resume=True,
         config_path=args.config,
     )
+    # Resume: reuse existing run_id from state file
+    from cc_pipeline.state import StateManager
+    _sm = StateManager(run_dir=str(run_dir))
+    _existing_state = _sm.load()
+    if _existing_state and _existing_state.get("run_id"):
+        orch.run_id = _existing_state["run_id"]
+    else:
+        orch.run_id = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
 
     try:
         results = orch.run()
