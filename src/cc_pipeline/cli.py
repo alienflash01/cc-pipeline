@@ -15,10 +15,35 @@ from cc_pipeline import __version__
 _shutdown_requested = False
 
 
+def _kill_cc_subprocesses() -> None:
+    """Best-effort kill of lingering Claude Code headless (`claude -p`) children.
+
+    CC is launched with ``start_new_session=True`` (see CCExecutor), so each CC
+    child runs in its own session/process group and escapes cc-pipeline's group.
+    That means Ctrl+C delivered to cc-pipeline never reaches the CC children —
+    they keep running in the background, burning API budget, even after
+    cc-pipeline exits. There is no shared process-group handle, so we match the
+    CC command line by pattern via ``pkill -f``.
+
+    Linux-specific, but cc-pipeline only targets Linux. Best-effort: any failure
+    (no ``pkill``, non-zero exit when nothing matched) is swallowed so the signal
+    handler can never crash.
+    """
+    try:
+        subprocess.run(
+            ["pkill", "-f", r"claude.*-p"],
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError):
+        # Swallow — cleanup must never raise from inside the signal handler.
+        pass
+
+
 def _signal_handler(signum, frame):
-    """Graceful shutdown: signal handler sets a flag for the main loop."""
+    """Graceful shutdown: set flag, kill CC children, then raise for SIGINT."""
     global _shutdown_requested
     _shutdown_requested = True
+    _kill_cc_subprocesses()
     if signum == signal.SIGINT:
         raise KeyboardInterrupt()
 
@@ -53,6 +78,10 @@ def _build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--run-dir", required=True, help="Run directory from previous run")
     resume_parser.add_argument("--concurrency", type=int, default=None, help="Module parallelism")
     resume_parser.add_argument("--model", default=None, help="Claude model (default: CC's default)")
+    resume_parser.add_argument("--verbose", "-v", action="store_true", default=False,
+                               help="Print step-by-step progress to terminal")
+    resume_parser.add_argument("--dry-run", action="store_true", default=False,
+                               help="Preview pipeline without executing CC")
 
     # status subcommand
     status_parser = subparsers.add_parser("status", help="Show pipeline status")
@@ -509,10 +538,15 @@ def _cmd_resume(args) -> int:
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
 
+    verbose = getattr(args, "verbose", False)
+    if verbose:
+        print(f"  verbose mode ON — printing step progress")
+
     orch = Orchestrator(
         config=config,
         run_dir=str(run_dir),
         cc_model=cc_model,
+        verbose=verbose,
         resume=True,
         config_path=args.config,
     )
