@@ -386,7 +386,21 @@ class ModuleRunner:
                 if result.returncode != 0:
                     if _is_rate_limited(result.stderr):
                         return ExecResult(ExecOutcome.RATE_LIMITED, result, "Shell rate limited")
-                    return ExecResult(ExecOutcome.CC_FAILED, result, f"exit {result.returncode}")
+                    # Include stdout/stderr tail in reason for debugging
+                    stderr_tail = (result.stderr or "").strip().splitlines()[-5:]
+                    stdout_tail = (result.stdout or "").strip().splitlines()[-5:]
+                    detail_parts = [f"exit {result.returncode}"]
+                    if stderr_tail:
+                        detail_parts.append("stderr: " + " | ".join(stderr_tail))
+                    if stdout_tail:
+                        detail_parts.append("stdout: " + " | ".join(stdout_tail))
+                    reason = " — ".join(detail_parts)
+                    # Verbose: print shell output
+                    if self.verbose:
+                        ts = datetime.now().strftime("%H:%M:%S")
+                        for line in (result.stderr or "").strip().splitlines()[-5:]:
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ {line}")
+                    return ExecResult(ExecOutcome.CC_FAILED, result, reason)
                 return ExecResult(ExecOutcome.SUCCESS, result)
             except subprocess.TimeoutExpired:
                 return ExecResult(ExecOutcome.TIMEOUT, reason="Shell timeout")

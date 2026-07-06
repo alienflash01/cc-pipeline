@@ -568,6 +568,53 @@ postcondition:
 > `check_coverage.sh {module}` 但本地没装这个脚本，要跑到运行期才会 `command not found`。
 > 建议先用 `cc-pipeline run config.yaml --dry-run` 把配置编译一遍，确认步骤链能跑通。
 
+### postcondition 完整配置示例
+
+#### 场景 1: 文件存在检查
+
+```yaml
+postcondition:
+  shell: "test -f .pipeline/analyze.json"
+  expect: "true"
+```
+
+#### 场景 2: 测试通过检查
+
+```yaml
+postcondition:
+  shell: "make test 2>&1 | tail -1"
+  expect: "contains('passed')"
+```
+
+#### 场景 3: 覆盖率门槛（>= 80%）
+
+```yaml
+postcondition:
+  shell: "gcovr --json-coverage - | python3 -c \"import sys,json; d=json.load(sys.stdin); exit(0 if d['line_rate'] >= 0.8 else 1)\""
+  expect: "true"
+```
+
+#### 场景 4: CC JSON 评分 >= 90
+
+```yaml
+- id: evaluate
+  executor: claude-code
+  prompt_file: prompts/evaluate.md
+  output: evaluate.json
+  postcondition:
+    shell: "python3 -c \"import json; d=json.load(open('.pipeline/evaluate.json')); exit(0 if d.get('score',0) >= 90 else 1)\""
+    expect: "true"
+  on_failure: generate
+```
+
+CC 把评分写入 `.pipeline/evaluate.json`，postcondition 读 JSON 判断 score >= 90。
+
+> **FAQ: 如何让评估器打分超过 90 分才算通过？**
+>
+> 在 evaluate 步骤配 postcondition（场景 4）。CC 把评分写入 JSON 文件，
+> postcondition 的 shell 命令读 JSON 提取 score，判断是否 >= 90。
+> 不达标则触发 `on_failure: generate` 回跳重新生成。
+
 ---
 
 ## 8. 变量注入
