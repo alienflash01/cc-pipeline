@@ -82,6 +82,15 @@ def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResu
             reason=f"contains('{text}'): {'found' if passed else 'not found'}",
         )
 
+    # "true" / "false" / "null" — literal exit-code-based result
+    # (shell exited 0 = true, non-zero handled earlier)
+    if expect.lower() == "true":
+        return PostconditionResult(passed=True, stdout=stdout, stderr=stderr,
+                                   reason="Shell exited 0")
+    if expect.lower() == "false":
+        return PostconditionResult(passed=False, stdout=stdout, stderr=stderr,
+                                   reason="Shell exited 0 but expected failure")
+
     # JSON path comparisons: $.field >= value, $.field == value, etc.
     # Try to parse stdout as JSON
     try:
