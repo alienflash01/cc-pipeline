@@ -1,6 +1,6 @@
 # cc-pipeline 用户指导文档
 
-> 版本：v0.3.0 | 577 tests | 95% coverage | 更新日期：2026-07-06
+> 版本：v0.3.0 | 616 tests | 95% coverage | 更新日期：2026-07-06
 
 ---
 
@@ -221,6 +221,7 @@ cc-pipeline run modules.yaml
 | `source_dir` | string | 源码目录 |
 | `source_files` | list | 被测文件列表，元素可以是**字符串**或 **dict**（见下） |
 | `variables` | dict | 自定义变量（注入 prompt；覆盖率阈值也写在这里） |
+| `file_order` | string | `per_file` 步骤的展开顺序：`batched`（默认）/ `sequential`（见下） |
 
 > **注意**：旧版的 `coverage:` 字段已删除。覆盖率阈值等内容现在统一写在 `variables:` 里。
 > YAML 中仍然可以写 `coverage:` —— 迁移层会自动将其内容并入 `variables:`，并发出一条 deprecated 警告。
@@ -359,6 +360,34 @@ modules:
   prompt: "为 {file} 生成测试"
   # 如果 source_files: [a.c, b.c, c.c]
   # 则执行顺序：generate[a.c] → generate[b.c] → generate[c.c]
+```
+
+### file_order：per_file 展开顺序
+
+module 级字段 `file_order` 控制当 pipeline 中存在多个 `per_file` 步骤时，文件与步骤的交叉顺序。默认 `batched`，可切换为 `sequential`。
+
+| 取值 | 展开方式 | 适用场景 |
+|------|---------|---------|
+| `batched`（默认） | 所有文件先过 stepA，再统一过 stepB | 各步骤彼此独立、可批量处理 |
+| `sequential` | 每个文件走完**完整 pipeline**（stepA→stepB）后，再处理下一个文件 | 文件间相互独立、想尽早拿到单文件完整结果 |
+
+假设 pipeline 是 `scaffold → generate(per_file) → evaluate`，`source_files: [a.c, b.c, c.c]`：
+
+```
+batched（默认）：
+  scaffold → generate[a] → generate[b] → generate[c] → evaluate
+
+sequential：
+  scaffold → generate[a] → evaluate → generate[b] → evaluate → generate[c] → evaluate
+```
+
+> 注：`sequential` 要求下游步骤（如 evaluate）也能在「单文件尚未齐全」的状态下运行；若 evaluate 依赖全部文件产出，请保持默认 `batched`。
+
+```yaml
+modules:
+  - name: auth
+    source_files: [a.c, b.c, c.c]
+    file_order: sequential
 ```
 
 ### depends_on
@@ -540,6 +569,43 @@ postcondition:
 | （省略） | 只要 shell 退出码 0 就通过 | — |
 
 > `||` 与 `&&` 可组合：先按 `||` 拆成若干 OR 组，每组内部再用 `&&` 求与，**任一 OR 组成立**即整体通过。
+
+### expect 值的形式（true / false / contains / JSON 表达式）
+
+`expect` 不写 JSONPath 时，按值的字面形式匹配 shell 退出码或 stdout。四种形式：
+
+| `expect` 值 | 通过条件 | 典型用途 |
+|-------------|---------|---------|
+| `true` | shell **退出码为 0** 即通过 | 「命令成功执行」类断言 |
+| `false` | shell **退出码非 0** 才通过（即期望命令失败） | 「确认某坏路径确实会报错」类反向断言 |
+| `contains('text')` | **stdout 包含** `text` 即通过 | 解析命令输出找关键词 |
+| `$.field …`（JSON 表达式） | **stdout 必须是合法 JSON**，再按表达式求值 | 解析 JSON 结果做数值/逻辑判断 |
+
+```yaml
+# 期望命令成功（最常见）
+postcondition:
+  shell: "make build"
+  expect: "true"
+
+# 期望命令失败（反向断言：坏输入应被拒绝）
+postcondition:
+  shell: "./run_with bad_input"
+  expect: "false"
+
+# stdout 关键词
+postcondition:
+  shell: "make test 2>&1 | tail -1"
+  expect: "contains('ALL PASSED')"
+
+# JSON 表达式：stdout 须为合法 JSON
+postcondition:
+  shell: "gcovr --json-coverage -"
+  expect: "$.line_rate >= 0.8"
+```
+
+> **修复说明（v0.3.0）**：此前 `expect: "true"` / `expect: "false"` 会被误当作 JSON 解析而报错。
+> 现已改为**字面匹配**——`true`/`false` 直接对应「期望退出码 0 / 非 0」，不再尝试 JSON 解析。
+> 含 `$.` 的表达式才走 JSON 解析路径，此时 stdout 必须是合法 JSON。
 
 ### 示例
 
@@ -1075,6 +1141,25 @@ cc-pipeline stop --run-dir <dir> --force    # SIGKILL，强制结束
   ```
   不会误报「已停止」，也不会提前删 PID 文件。
 
+### 信号处理（Ctrl+C / SIGTERM）
+
+无论前台 `run` 还是后台 daemon，收到 **Ctrl+C（SIGINT）或 SIGTERM** 时都会走**优雅退出**流程，不会留下孤儿 CC 进程：
+
+1. **设置优雅退出标志**：通知 orchestrator 停止派发新任务
+2. **kill 所有正在运行的 CC 子进程**：通过 `pkill -f claude.*-p` 终止当前在跑的 Claude Code 调用（否则 CC 子进程会脱离父进程继续占用 token）
+3. **完成当前模块后停止**：已在执行的 module 跑到自然边界后收尾，state 实时落盘
+
+```
+^C
+🛑 收到中断信号，正在优雅退出...
+   - 已 kill N 个 CC 子进程
+   - 当前模块完成后停止（state 已落盘，可用 resume 续跑）
+```
+
+- **state 不丢**：退出时 `orchestrator-state.json` 已是最新，直接 `cc-pipeline resume config.yaml --run-dir <dir>` 即可幂等续跑
+- **CC 不会变孤儿**：第 2 步的 `pkill` 确保即使父进程先退，CC 子进程也被一并清掉，避免后台继续烧 token
+- 强制立即退出用 `kill -9`（SIGKILL），但此时可能留下正在运行的 CC 子进程，不推荐
+
 ---
 
 ## 16. 崩溃恢复
@@ -1120,7 +1205,10 @@ cc-pipeline status --run-id 2026-07-06T23-00-00
 
 ```bash
 cc-pipeline resume config.yaml --run-dir <dir>
+cc-pipeline resume config.yaml --run-dir <dir> -v   # 详细输出（每步带时间戳）
 ```
+
+`resume` 与 `run` 一样支持 `--verbose` / `-v`：续跑时实时打印每个 step 的带时间戳事件（START / PASS / FAIL / RETRY / JUMP），方便确认「到底从哪一步接着跑、哪些被跳过了」。
 
 恢复行为（**幂等**）：
 
@@ -1347,6 +1435,22 @@ examples/
 - ShellExecutor: 默认 300 秒
 - 超时后该步骤标记为 TIMEOUT，进入 retry 流程（消耗预算）
 
+### Q: shell 命令失败时能看到详细原因吗？
+
+**A:** 可以。从 v0.3.0 起，shell executor 失败不再是黑盒——失败原因（`reason`）会包含 **exit code + stderr/stdout 最后 5 行**，直接显示在 verbose 进度行、收尾汇总和 transcript 里。
+
+例如 `postcondition` 的 shell 返回非 0 时，你会看到类似：
+
+```
+[20:15:42] [auth] generate      ⚠️  RETRY (attempt 2) — shell exit=2 (stderr: make: *** No rule ... )
+```
+
+- **exit code**：命令的退出码
+- **stderr / stdout 最后 5 行**：截取末尾 5 行，定位「卡在哪一句」
+- **verbose 模式**（`-v`）下还会在终端**实时打印** shell 的 stdout/stderr，长跑时方便 `tail -f` 跟踪
+
+> 想看完整输出而非摘要，用 `cc-pipeline transcript --run-dir <dir> --module <m>`，里面记录了 shell 的完整 stdout/stderr。
+
 ### Q: CC 一直返回 429 怎么办？
 
 **A:** 框架自动处理（前 **3** 次免费、每次退避 **30 秒**）：
@@ -1403,6 +1507,7 @@ cc-pipeline run config.yaml --daemon               # 后台运行（仅 Unix）
 
 # —— 恢复 ——
 cc-pipeline resume config.yaml --run-dir <dir>     # 幂等续跑中断的 run
+cc-pipeline resume config.yaml --run-dir <dir> -v  # 续跑时详细输出（每步带时间戳）
 
 # —— 后台进程 ——
 cc-pipeline stop --run-dir <dir>                   # 优雅停止（SIGTERM）
@@ -1443,7 +1548,7 @@ cc-pipeline --help                                 # 帮助
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
-| v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默（启动横幅 + 模块进度行无条件打印）、`run --dry-run` 配置预览、preflight 运行前检查（只 warn 不停）、`stop` 停止语义可信（30s 后复查存活、不再误报 / 误删 PID）、`output_branch_prefix` 默认值改为 `cc-auto`、init/check 命令补入文档与速查表、examples/ 双示例（quickstart-shell 无 CC 入口 + quickstart-cc 完整编排） |
+| v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默（启动横幅 + 模块进度行无条件打印）、`run --dry-run` 配置预览、preflight 运行前检查（只 warn 不停）、`stop` 停止语义可信（30s 后复查存活、不再误报 / 误删 PID）、`output_branch_prefix` 默认值改为 `cc-auto`、init/check 命令补入文档与速查表、examples/ 双示例（quickstart-shell 无 CC 入口 + quickstart-cc 完整编排）；`file_order: batched\|sequential` 控制 per_file 展开顺序、postcondition `expect: true/false` 字面匹配（不再误解析为 JSON）、shell executor 失败详情（exit code + stderr/stdout 末 5 行 + verbose 实时打印）、Ctrl+C/SIGTERM 优雅退出（kill CC 子进程 + state 落盘 + 可 resume）、`resume --verbose/-v` 续跑详细输出 |
 | v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
 | v0.2 | 2026-07-01 | CC 上下文传递、CO 式错误处理、rate limit 保护、orchestrator 异常保护、rollback_to_latest |
 | v0.1 | 2026-06-30 | 初始版本：Phase 1-4 开发完成，135 tests |
