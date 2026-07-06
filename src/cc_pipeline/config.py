@@ -83,9 +83,12 @@ def load_config(path: str) -> PipelineConfig:
         ValueError: If required fields are missing.
         FileNotFoundError: If file doesn't exist.
     """
-    with open(path) as f:
-        raw = yaml.safe_load(f)
-    
+    try:
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+    except yaml.YAMLError as e:
+        raise ValueError(f"YAML syntax error: {e}") from e
+
     if raw is None:
         raise ValueError("Config file is empty")
     
@@ -143,6 +146,30 @@ def load_config(path: str) -> PipelineConfig:
                 f"prompt takes priority, prompt_file ignored",
                 stacklevel=2,
             )
+
+        # Validate executor is a string (before the value check below)
+        if not isinstance(step_raw.get("executor", "claude-code"), str):
+            raise ValueError(
+                f"Step '{step_raw.get('id', '?')}': executor must be a string, "
+                f"got {type(step_raw.get('executor')).__name__}"
+            )
+
+        # Validate depends_on does not reference itself
+        if step.depends_on == step.id:
+            raise ValueError(f"Step '{step.id}': depends_on cannot reference itself")
+
+        # Validate postcondition type and required fields
+        if step.postcondition is not None and not isinstance(step.postcondition, dict):
+            raise ValueError(
+                f"Step '{step.id}': postcondition must be a dict with 'shell' and "
+                f"'expect' keys, got {type(step.postcondition).__name__}"
+            )
+        if step.postcondition is not None and isinstance(step.postcondition, dict):
+            if "shell" not in step.postcondition:
+                raise ValueError(
+                    f"Step '{step.id}': postcondition missing required 'shell' field"
+                )
+
         pipeline.append(step)
     
     # Parse modules
