@@ -1,6 +1,6 @@
 # 最小示例：单 module 单步 pipeline
 
-repo: /mnt/e/02.workspace/co-demo
+repo: .
 base_branch: master
 concurrency: 1
 
@@ -11,10 +11,10 @@ pipeline:
       你在为 {module} 模块生成单元测试。
       源码目录：{source_dir}
       读取所有 .py 文件，为每个函数生成 pytest 测试。
-      使用 /usr/bin/python3 运行测试。
+      使用 python3 运行测试。
       不要创建虚拟环境，不要 pip install。
     postcondition:
-      shell: "/usr/bin/python3 -m pytest tests/ -v 2>&1 | tail -1"
+      shell: "python3 -m pytest tests/ -v 2>&1 | tail -1"
       expect: "contains('passed')"
 
 modules:

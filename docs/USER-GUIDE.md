@@ -74,6 +74,26 @@ cc-pipeline uninstall --yes      # 跳过确认直接卸载
 卸载会：移除 pip 安装的 `cc-pipeline` 包、清理 `/tmp/cc-pipeline-worktrees` 与 `~/.cc-pipeline/runs`。
 **不会触碰**你的项目仓库和已存在的 worktree。
 
+### ⚠️ 关于权限：CC 以 `--dangerously-skip-permissions` 运行
+
+cc-pipeline 以 **headless 模式**调用 Claude Code，因此每次 CC 调用都带上
+`--dangerously-skip-permissions` 参数——这是非交互运行的必需项。它的含义是：
+
+- CC 在其所处的 **worktree 目录内**拥有**完整的文件读写与命令执行权限**，
+  无需逐条确认即可执行 Bash、读写文件。
+
+cc-pipeline 通过两层机制把这个「全权限」约束在隔离边界内，确保你的**主仓库源码安全**：
+
+1. **git worktree 物理隔离**：每个模块在独立 worktree 中运行，CC 的所有改动
+   都落在 worktree 里，**主仓库目录不会被直接触碰**。成功后清理，失败后保留供排查。
+2. **git checkpoint 链 + 回滚**：每一步成功后 `commit + tag`，重试时回滚到
+   「上一步最后一次成功」的已验证状态（`git reset --hard` + `git clean -fd --exclude=.pipeline/`），
+   保留源码可恢复，同时保留 `.pipeline/` 运行上下文。
+
+> **如何进一步收紧**：若你的环境对 CC 可执行的工具敏感，可自建 wrapper 限制
+> `allowedTools`（例如 judge 步骤默认只允许 `["Read", "Bash"]`），或在 worktree
+> 外层加沙箱（容器 / chroot）。但 worktree + checkpoint 已能在常规场景下保护源码。
+
 ---
 
 ## 2. 快速开始

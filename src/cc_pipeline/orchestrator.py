@@ -69,6 +69,25 @@ class Orchestrator:
         """Request a graceful shutdown of the orchestrator."""
         self._shutdown_requested = True
 
+    def _print_module_summary(self, result: dict) -> None:
+        """Print a one-line per-module summary (shown in both verbose and quiet modes).
+
+        This is the only progress a non-verbose user sees while a run is in
+        flight, so it fires regardless of ``self.verbose`` (BP-3.1). Step-level
+        detail remains gated behind verbose in the runner.
+        """
+        name = result.get("module", "?")
+        status = result.get("status", "?")
+        if status == "passed":
+            steps = result.get("steps_total", 0)
+            module = next((m for m in self.config.modules if m.name == name), None)
+            n_files = len(module.source_files) if module and module.source_files else 0
+            detail = f"({steps} steps, {n_files} files)" if n_files else f"({steps} steps)"
+            print(f"  ✅ {name:<8} passed  {detail}")
+        else:
+            reason = result.get("error") or result.get("reason") or status
+            print(f"  ✗ {name:<8} failed — {reason}")
+
     @property
     def shutdown_requested(self) -> bool:
         """Check if shutdown has been requested (self flag or legacy cli flag)."""
@@ -183,11 +202,13 @@ class Orchestrator:
                     module = m
                     break
             if module is None:
-                return {
+                not_found = {
                     "status": "error",
                     "module": module_name,
                     "error": f"Module '{module_name}' not found in config.modules",
                 }
+                self._print_module_summary(not_found)
+                return not_found
             branch = f"{self.config.output_branch_prefix}/{module_name}"
 
             # Save initial state
@@ -261,6 +282,7 @@ class Orchestrator:
             else:
                 self.worktree_mgr.preserve(module_name)
 
+            self._print_module_summary(result)
             return result
 
         except Exception as e:
@@ -275,8 +297,10 @@ class Orchestrator:
             if wt_path:
                 self.worktree_mgr.preserve(module_name)
 
-            return {
+            err_result = {
                 "status": "failed",
                 "module": module_name,
                 "error": str(e),
             }
+            self._print_module_summary(err_result)
+            return err_result

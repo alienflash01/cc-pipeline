@@ -424,6 +424,12 @@ def _cmd_run(args) -> int:
         config_path=args.config,
     )
 
+    # Startup banner — printed unconditionally so the terminal is never silent
+    # between hitting Enter and the first module finishing (BP-3.1).
+    print(f"🌙 cc-pipeline {__version__}")
+    print(f"   concurrency={config.concurrency}  modules={[m.name for m in config.modules]}")
+    print()
+
     try:
         results = orch.run()
     except FileNotFoundError as e:
@@ -629,24 +635,35 @@ def _cmd_stop(args) -> int:
         os.kill(pid, signal_num)
         # Give process time to handle signal gracefully
         import time
+        stopped = False
         for _ in range(30):  # wait up to 30s
             try:
                 os.kill(pid, 0)  # check if still alive
             except ProcessLookupError:
+                stopped = True
                 break
             time.sleep(1)
-        print(f"Process {pid} stopped.")
+
+        if stopped:
+            # Confirmed dead — safe to report success and clean up the PID file.
+            print(f"Process {pid} stopped.")
+            if pid_file.exists():
+                pid_file.unlink()
+            return 0
+
+        # Still alive after 30s — do NOT delete the PID file. The daemon may be
+        # blocked inside a long CC call; tell the user to escalate to --force.
+        print(f"Process {pid} still running after 30s.")
+        print(f"  Try: cc-pipeline stop --run-dir {args.run_dir} --force")
+        return 1
     except ProcessLookupError:
         print(f"Process {pid} already stopped.")
+        if pid_file.exists():
+            pid_file.unlink()
+        return 0
     except PermissionError:
         print(f"Permission denied. Try: sudo cc-pipeline stop --run-dir {args.run_dir}")
         return 1
-    finally:
-        # Clean up PID file
-        if pid_file.exists():
-            pid_file.unlink()
-
-    return 0
 
 
 # --- report helpers ---------------------------------------------------------
