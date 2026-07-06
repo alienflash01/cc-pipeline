@@ -262,6 +262,7 @@ class ModuleRunner:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {pc_result.reason}")
+                            self._print_postcondition_diag(pc_result)
                         break
 
             # After inner while: check passed/on_failure
@@ -485,3 +486,64 @@ class ModuleRunner:
             expect=expect,
             cwd=self.worktree_path,
         )
+
+    def _detect_file_changes(self) -> list[str]:
+        """Detect files created/modified by CC via git status."""
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True, text=True,
+            cwd=self.worktree_path,
+        )
+        changes = []
+        for line in result.stdout.strip().splitlines():
+            if line.strip():
+                changes.append(line)
+        return changes
+
+    def _suffix_hint(self, shell: str, changes: list[str]) -> str:
+        """Hint when the postcondition checks one suffix but CC made another.
+
+        Checks both git status output and the actual filesystem for files
+        with mismatched suffixes.
+        """
+        import os
+        # Collect all relevant file paths from changes + filesystem
+        all_files = list(changes)
+        # Also scan tests/ directory on filesystem if it exists
+        tests_dir = os.path.join(self.worktree_path, "tests")
+        if os.path.isdir(tests_dir):
+            for f in os.listdir(tests_dir):
+                all_files.append(f)
+
+        if ".c" in shell and any(".py" in f for f in all_files):
+            return "checking .c but CC generated .py"
+        if ".py" in shell and any(".c" in f for f in all_files):
+            return "checking .py but CC generated .c"
+        return ""
+
+    def _print_postcondition_diag(self, pc_result: PostconditionResult) -> None:
+        """Print postcondition-failure diagnostics (call only in verbose >= 1).
+
+        Shows what was checked (the shell command), what CC changed on disk
+        (git status), and a suffix-mismatch hint — so a failed postcondition
+        is debuggable instead of a bare exit code.
+        """
+        ts = datetime.now().strftime("%H:%M:%S")
+        shell = pc_result.shell_command or ""
+        if shell:
+            print(f"  [{ts}]   postcondition: {shell}")
+
+        # Shell stdout tail (cap 3 lines) — often explains the mismatch
+        if pc_result.stdout.strip():
+            for line in pc_result.stdout.strip().splitlines()[:3]:
+                print(f"  [{ts}]   │ {line}")
+
+        changes = self._detect_file_changes()
+        if changes:
+            print(f"  [{ts}]   CC changed files:")
+            for line in changes:
+                print(f"  [{ts}]     {line}")
+
+        hint = self._suffix_hint(shell, changes)
+        if hint:
+            print(f"  [{ts}]   💡 Hint: {hint}")

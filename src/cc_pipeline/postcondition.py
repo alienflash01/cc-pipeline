@@ -14,6 +14,7 @@ class PostconditionResult:
     stdout: str = ""
     stderr: str = ""
     reason: str = ""
+    shell_command: str = ""  # the shell command that was evaluated
 
 
 def evaluate(
@@ -47,23 +48,26 @@ def evaluate(
 
     # Shell failed → postcondition fails
     if result.returncode != 0:
-        return PostconditionResult(
+        pc_result = PostconditionResult(
             passed=False,
             stdout=stdout,
             stderr=stderr,
             reason=f"Shell command exited with code {result.returncode}",
         )
-
-    # No expect → pass (shell exited 0)
-    if expect is None:
-        return PostconditionResult(
+    elif expect is None:
+        # No expect → pass (shell exited 0)
+        pc_result = PostconditionResult(
             passed=True,
             stdout=stdout,
             stderr=stderr,
         )
+    else:
+        # Parse expect expression
+        pc_result = _evaluate_expect(expect, stdout, stderr)
 
-    # Parse expect expression
-    return _evaluate_expect(expect, stdout, stderr)
+    # Record the shell command that produced this result (for diagnostics)
+    pc_result.shell_command = shell
+    return pc_result
 
 
 def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResult:
