@@ -119,14 +119,14 @@ class TestResumeVerboseFlag:
         args = parser.parse_args(
             ["resume", "config.yaml", "--run-dir", "x", "--verbose"]
         )
-        assert args.verbose is True
+        assert args.verbose >= 1
 
     def test_resume_parser_verbose_defaults_false(self):
         """Without --verbose, args.verbose == False."""
         from cc_pipeline.cli import _build_parser
         parser = _build_parser()
         args = parser.parse_args(["resume", "config.yaml", "--run-dir", "x"])
-        assert args.verbose is False
+        assert args.verbose == 0
 
     def test_resume_parser_has_dry_run(self):
         """resume_parser also gains --dry-run for consistency with run."""
@@ -175,10 +175,10 @@ modules:
 
         assert ret == 0
         MockOrch.assert_called_once()
-        assert MockOrch.call_args.kwargs.get("verbose") is True
+        assert MockOrch.call_args.kwargs.get("verbose") >= 1
 
     def test_resume_without_verbose_is_quiet(self, git_repo, tmp_path):
-        """`cc-pipeline resume ...` (no flag) constructs Orchestrator(verbose=False)."""
+        """`cc-pipeline resume ...` (no flag) constructs Orchestrator(verbose=0)."""
         from cc_pipeline.cli import main
 
         cfg = git_repo.parent / "config.yaml"
@@ -208,4 +208,4 @@ modules:
             main(["resume", str(cfg), "--run-dir", str(runs)])
 
         MockOrch.assert_called_once()
-        assert MockOrch.call_args.kwargs.get("verbose") is False
+        assert MockOrch.call_args.kwargs.get("verbose") == 0

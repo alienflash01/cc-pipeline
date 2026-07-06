@@ -30,7 +30,7 @@ class Orchestrator:
         worktree_root: str | None = None,
         cc_model: str | None = None,
         resume: bool = False,
-        verbose: bool = False,
+        verbose: int = 0,
         config_path: str | None = None,
     ):
         self.config = config

@@ -101,7 +101,7 @@ class ModuleRunner:
         run_dir: str,
         cc_executor: CCExecutor | None = None,
         shell_executor: ShellExecutor | None = None,
-        verbose: bool = False,
+        verbose: int = 0,
     ):
         self.steps = steps
         self.module_name = module_name
@@ -145,10 +145,21 @@ class ModuleRunner:
                 self.logger.event("step_start", step=step.step_id, attempt=current_attempt,
                                   loop_file=step.loop_file)
 
-                if self.verbose:
+                if self.verbose >= 1:
                     file_info = f" [{step.loop_file}]" if step.loop_file else ""
                     ts = datetime.now().strftime("%H:%M:%S")
                     print(f"  [{ts}] [{self.module_name}] {step.step_id:12} START{file_info}")
+
+                # -vv: print full prompt or shell command
+                if self.verbose >= 2:
+                    ts2 = datetime.now().strftime("%H:%M:%S")
+                    if step.executor in ("claude-code", "judge"):
+                        prompt_text = self._inject_context(step.rendered_prompt, step)
+                        print(f"  [{ts2}]   PROMPT:")
+                        for pline in prompt_text.splitlines():
+                            print(f"  [{ts2}]   │ {pline}")
+                    elif step.executor == "shell":
+                        print(f"  [{ts2}]   SHELL: {step.rendered_prompt}")
 
                 # Execute the step with layered error handling
                 exec_result = self._execute_step(step)
@@ -156,7 +167,7 @@ class ModuleRunner:
                 # Layer 1: Rate limit → free retry with backoff, limited count
                 if exec_result.outcome == ExecOutcome.RATE_LIMITED:
                     if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
                         self.logger.log_retry(
@@ -188,7 +199,7 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         if step_idx > 0:
@@ -203,7 +214,7 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
@@ -221,7 +232,7 @@ class ModuleRunner:
                     self._append_progress(step, "PASS", current_attempt)
                     completed = step_idx + 1
                     passed = True
-                    if self.verbose:
+                    if self.verbose >= 1:
                         file_info = f" [{step.loop_file}]" if step.loop_file else ""
                         ts = datetime.now().strftime("%H:%M:%S")
                         print(f"  [{ts}] [{self.module_name}] {step.step_id:12} PASS{file_info}")
@@ -233,7 +244,7 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
                         if step_idx > 0:
@@ -248,7 +259,7 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
                         )
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {pc_result.reason}")
                         break
@@ -273,7 +284,7 @@ class ModuleRunner:
                                   "jump": jump_count},
                         )
                         step_idx = target_idx
-                        if self.verbose:
+                        if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id} → {step.on_failure} (jump {jump_count})")
                         continue
@@ -396,7 +407,7 @@ class ModuleRunner:
                         detail_parts.append("stdout: " + " | ".join(stdout_tail))
                     reason = " — ".join(detail_parts)
                     # Verbose: print shell output
-                    if self.verbose:
+                    if self.verbose >= 1:
                         ts = datetime.now().strftime("%H:%M:%S")
                         for line in (result.stderr or "").strip().splitlines()[-5:]:
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ {line}")
@@ -454,6 +465,11 @@ class ModuleRunner:
 
         # Success
         self.logger.log_cc_result(step=step.step_id, cc_result=cc_result)
+        if self.verbose >= 2 and cc_result.stdout:
+            ts = datetime.now().strftime("%H:%M:%S")
+            print(f"  [{ts}]   CC OUTPUT (exit {cc_result.returncode}):")
+            for line in (cc_result.stdout or "").strip().splitlines()[:5]:
+                print(f"  [{ts}]   │ {line}")
         return ExecResult(ExecOutcome.SUCCESS, cc_result)
 
     def _check_postcondition(self, step: CompiledStep) -> PostconditionResult:

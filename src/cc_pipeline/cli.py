@@ -67,8 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--run-dir", default=None, help="Run output directory")
     run_parser.add_argument("--daemon", action="store_true", default=False,
                             help="Run as daemon (fork to background)")
-    run_parser.add_argument("--verbose", "-v", action="store_true", default=False,
-                            help="Print step-by-step progress to terminal")
+    run_parser.add_argument("--verbose", "-v", action="count", default=0,
+                            help="Verbose (-v: steps, -vv: +prompts/CC output)")
     run_parser.add_argument("--dry-run", action="store_true", default=False,
                             help="Preview pipeline without executing CC")
 
@@ -78,8 +78,8 @@ def _build_parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--run-dir", required=True, help="Run directory from previous run")
     resume_parser.add_argument("--concurrency", type=int, default=None, help="Module parallelism")
     resume_parser.add_argument("--model", default=None, help="Claude model (default: CC's default)")
-    resume_parser.add_argument("--verbose", "-v", action="store_true", default=False,
-                               help="Print step-by-step progress to terminal")
+    resume_parser.add_argument("--verbose", "-v", action="count", default=0,
+                               help="Verbose (-v: steps, -vv: +prompts/CC output)")
     resume_parser.add_argument("--dry-run", action="store_true", default=False,
                                help="Preview pipeline without executing CC")
 
@@ -442,9 +442,10 @@ def _cmd_run(args) -> int:
     cc_model = args.model or config.model or None
 
     # Run orchestrator (checks _shutdown_requested between modules)
-    verbose = getattr(args, "verbose", False)
-    if verbose:
-        print(f"  verbose mode ON — printing step progress")
+    verbose = getattr(args, "verbose", 0)
+    if verbose >= 1:
+        level = "steps + prompts/CC output" if verbose >= 2 else "step progress"
+        print(f"  verbose mode ON (level {verbose}) — {level}")
     orch = Orchestrator(
         config=config,
         run_dir=str(run_dir),
@@ -538,9 +539,10 @@ def _cmd_resume(args) -> int:
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
 
-    verbose = getattr(args, "verbose", False)
-    if verbose:
-        print(f"  verbose mode ON — printing step progress")
+    verbose = getattr(args, "verbose", 0)
+    if verbose >= 1:
+        level = "steps + prompts/CC output" if verbose >= 2 else "step progress"
+        print(f"  verbose mode ON (level {verbose}) — {level}")
 
     orch = Orchestrator(
         config=config,
