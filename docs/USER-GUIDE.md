@@ -1,29 +1,33 @@
 # cc-pipeline 用户指导文档
 
-> 版本：v0.3 | 492 tests | 95% coverage | 更新日期：2026-07-04
+> 版本：v0.3.0 | 577 tests | 95% coverage | 更新日期：2026-07-06
 
 ---
 
 ## 目录
 
 1. [安装](#1-安装)
-2. [快速开始](#2-快速开始)
+2. [快速开始（四步上手）](#2-快速开始四步上手)
 3. [配置文件详解](#3-配置文件详解)
 4. [Pipeline DSL 语法](#4-pipeline-dsl-语法)
 5. [三种 Executor 使用场景](#5-三种-executor-使用场景)
 6. [CC 间上下文传递](#6-cc-间上下文传递)
 7. [Postcondition 门控写法](#7-postcondition-门控写法)
 8. [变量注入](#8-变量注入)
-9. [Retry、回滚与 on_failure 回跳](#9-retry回滚与-on_failure-回跳)
+9. [Retry、回滚与 on_failure 回跳](#9retry回滚与-on_failure-回跳)
 10. [CC 错误处理（CO 式分层）](#10-cc-错误处理co-式分层)
-11. [定时运行（Cron）](#11-定时运行cron)
-12. [Daemon 模式（后台运行）](#12-daemon-模式后台运行)
-13. [崩溃恢复](#13-崩溃恢复)
-14. [运行报告](#14-运行报告)
-15. [日志与调试](#15-日志与调试)
-16. [Transcript 命令（运行调试）](#16-transcript-命令运行调试)
-17. [异常处理](#17-异常处理)
-18. [常见问题](#18-常见问题)
+11. [运行时输出与 Preflight 检查](#11-运行时输出与-preflight-检查)
+12. [init 命令（交互式生成配置）](#12-init-命令交互式生成配置)
+13. [check 命令（环境与配置检查）](#13-check-命令环境与配置检查)
+14. [定时运行（Cron）](#14-定时运行cron)
+15. [Daemon 模式（后台运行）](#15-daemon-模式后台运行)
+16. [崩溃恢复](#16-崩溃恢复)
+17. [运行报告](#17-运行报告)
+18. [日志与调试](#18-日志与调试)
+19. [Transcript 命令（运行调试）](#19-transcript-命令运行调试)
+20. [examples 示例目录](#20-examples-示例目录)
+21. [异常处理](#21-异常处理)
+22. [常见问题](#22-常见问题)
 
 ---
 
@@ -38,6 +42,16 @@
 
 ### 安装步骤
 
+推荐用项目自带的一键脚本（自动检测 Python/Git/Claude Code/gh，处理 PEP 668）：
+
+```bash
+git clone git@github.com:alienflash01/cc-pipeline.git
+cd cc-pipeline
+./scripts/install.sh        # 一键检测 + 安装（--dev 顺带跑测试）
+```
+
+或手动安装：
+
 ```bash
 git clone git@github.com:alienflash01/cc-pipeline.git
 cd cc-pipeline
@@ -49,6 +63,8 @@ pip install -e ".[dev]"
 ```bash
 cc-pipeline --version
 # → cc-pipeline 0.3.0
+
+cc-pipeline check            # 环境自检（Python/Git/CC CLI/磁盘空间）
 ```
 
 ### 配置 Claude Code
@@ -96,11 +112,27 @@ cc-pipeline 通过两层机制把这个「全权限」约束在隔离边界内�
 
 ---
 
-## 2. 快速开始
+## 2. 快速开始（四步上手）
 
-### 第一个 Pipeline
+推荐用四个命令从零跑通，全程不超过 5 分钟：
 
-创建 `modules.yaml`：
+```bash
+# 1) 交互式生成 config.yaml + prompts/（三种任务模板可选）
+cc-pipeline init
+
+# 2) 环境与配置自检（不调 CC，0 成本）
+cc-pipeline check --config config.yaml
+
+# 3) 配置预览：看清将要跑哪些步骤、哪些文件、估算多少次 CC 调用（不调 CC，0 成本）
+cc-pipeline run config.yaml --dry-run
+
+# 4) 正式运行
+cc-pipeline run config.yaml
+```
+
+### 手写配置也行
+
+如果不想用 `init`，直接创建 `modules.yaml`：
 
 ```yaml
 repo: /path/to/your/project
@@ -136,18 +168,29 @@ modules:
 cc-pipeline run modules.yaml
 ```
 
-输出：
+### 默认输出（不再静默）
+
+**不加 `--verbose` 也有输出**。从你按下回车到第一个 module 完成，终端不会再死寂——
+框架会先打一行启动横幅，再在每个 module 完成时打一行结果：
 
 ```
 🌙 cc-pipeline 0.3.0
-   run_id=2026-07-01T23-00-00  concurrency=3  model=auto (CC default)
-   modules=['auth']
+   concurrency=5  modules=['auth']
+
+  ✅ auth     passed  (3 steps, 2 files)
 
 ============================================================
   ✓ auth                  passed
 ============================================================
-  1 passed, 0 failed  (run_id: 2026-07-01T23-00-00)
+  1 passed, 0 failed  (run_id: 2026-07-06T23-00-00)
 ```
+
+- 启动横幅：版本 + 并发数 + 模块列表，**无条件打印**
+- 模块进度行：`✅ <module> passed (N steps)` 或 `(N steps, M files)`，**非 verbose 也打**
+- 收尾汇总：每个模块的 ✓/✗、失败原因、一键排查命令、`run_id`
+
+想看每一步的实时细节（START/PASS/FAIL、rate-limit、retry、回跳），加 `-v`，详见
+[§11 运行时输出与 Preflight 检查](#11-运行时输出与-preflight-检查)。
 
 ---
 
@@ -161,11 +204,13 @@ cc-pipeline run modules.yaml
 | `base_branch` | string | `main` | worktree 基准分支 |
 | `concurrency` | int | `5` | module 间并行数 |
 | `max_retries` | int | `3` | 全局默认重试次数 |
-| `output_branch_prefix` | string | `ut-auto` | PR 分支前缀 |
+| `output_branch_prefix` | string | `cc-auto` | PR 分支前缀 |
 | `model` | string | `""` | 全局默认模型（空 = CC 自己决定） |
 | `worktree_root` | string | `""` | worktree 根目录（相对路径相对于 `repo`，绝对路径原样使用） |
 | `pr_labels` | list | `[]` | 创建 PR 时附加的标签 |
 | `pr_title_template` | string | `""` | PR 标题模板 |
+
+> **变更**：`output_branch_prefix` 默认值已从 `ut-auto` 改为 `cc-auto`（cc-pipeline 是通用框架，不再特指 UT）。
 
 ### Module 字段
 
@@ -209,7 +254,7 @@ repo: /home/user/my-project
 base_branch: develop
 concurrency: 5
 max_retries: 3
-output_branch_prefix: ut-nightly
+output_branch_prefix: cc-nightly
 model: glm-4.6                  # 全局默认模型（留空则 CC 自己决定）
 worktree_root: ../worktrees     # worktree 创建在 repo 的上级目录 ../worktrees
 pr_labels: [auto-generated, unit-test]
@@ -293,6 +338,9 @@ modules:
 | `on_failure_max_jumps` | int | `2` | `on_failure` 最大跳转次数 |
 | `skill` | string | `null` | ⚠️ **未实现**（声明会被忽略并警告） |
 | `rollback` | string | `git-checkpoint` | 回滚方式 |
+
+> **提示**：`prompt_file` 指向不存在的文件时，加载期即报错（不再静默）。用
+> `cc-pipeline check --config config.yaml` 可一次性校验所有 `prompt_file` 是否就位。
 
 ### prompt 解析优先级
 
@@ -516,6 +564,10 @@ postcondition:
   expect: "$.density >= 2.0"
 ```
 
+> **注意**：postcondition 的 `shell` 命令在加载期**不校验工具是否存在**。如果你写了
+> `check_coverage.sh {module}` 但本地没装这个脚本，要跑到运行期才会 `command not found`。
+> 建议先用 `cc-pipeline run config.yaml --dry-run` 把配置编译一遍，确认步骤链能跑通。
+
 ---
 
 ## 8. 变量注入
@@ -546,7 +598,7 @@ prompt: |
   当前文件：{file}
   覆盖率要求：行 ≥ {line_threshold}%，分支 ≥ {branch_threshold}%
   Mock 策略：{mock_strategy}
-  
+
   脚手架信息：{.pipeline/scaffold.json}
 ```
 
@@ -589,20 +641,7 @@ pipeline/{module}/{step}/{attempt}
 [pass]       step=generate attempt=2 reason="All conditions passed"
 ```
 
-### Verbose 模式（带时间戳）
-
-`-v` / `--verbose` 在运行时实时打印每个步骤的 START / PASS / FAIL 等事件，并带时间戳，便于观察耗时与卡点：
-
-```bash
-cc-pipeline run config.yaml -v
-```
-
-输出示例：
-
-```
-  [20:15:03] [auth] generate     START [auth_login.c]
-  [20:15:48] [auth] generate     PASS  [auth_login.c]
-```
+实时带时间戳的版本见 [§11 运行时输出](#11-运行时输出与-preflight-检查)。
 
 ### on_failure 回跳（不回滚）
 
@@ -643,7 +682,7 @@ cc-pipeline 实现了 claude-overnight 风格的 4 层 CC 错误处理策略：
 ### Rate Limit 处理细节
 
 ```
-常量：
+常量（runner.py）：
   MAX_FREE_RATE_LIMIT_RETRIES = 3   # 免费重试次数
   RATE_LIMIT_BACKOFF_SECS = 30      # 每次退避等待秒数
 
@@ -672,7 +711,243 @@ CC 执行过程中抛出未预期异常（如 ConnectionError）时：
 
 ---
 
-## 11. 定时运行（Cron）
+## 11. 运行时输出与 Preflight 检查
+
+这一章解释 `cc-pipeline run` 在运行时会打印什么、怎么排查失败。
+
+### 11.1 启动前：Preflight 检查（只 warn 不停）
+
+正式跑之前，框架会自动做一次环境预检，覆盖：
+
+- Claude Code CLI 是否安装（`which claude`）
+- `repo` 目录是否存在
+- `repo` 是否是 git 仓库（有 `.git`）
+- `base_branch` 在 repo 中是否存在
+- 若配置了 `worktree_root`，其父目录是否存在
+
+**检测到问题只打印警告到 stderr，绝不停止运行**：
+
+```
+⚠️  Preflight warning:
+  • Branch develop not found in repo
+  • worktree_root parent directory not found: /nonexistent
+```
+
+> 这是 advisory 提醒。preflight 不阻断执行，方便你「先看到再决定」。
+
+### 11.2 默认输出（不加 `--verbose`）
+
+如 [§2](#2-快速开始四步上手) 所述，默认模式已不再全程沉默。运行期间你会看到：
+
+```
+🌙 cc-pipeline 0.3.0
+   concurrency=5  modules=['auth', 'payment']
+
+  ✅ auth     passed  (3 steps, 2 files)
+  ✗ payment   failed — evaluate: score=45 < 60 (3 retries)
+```
+
+- **启动横幅**：`🌙 cc-pipeline <version>` + 并发数 + 模块列表，无条件打印
+- **模块进度行**：每个 module 完成时打印一行 `✅/✗ <module> <status> (N steps[, M files])`
+
+### 11.3 详细输出（`-v` / `--verbose`）
+
+加 `-v` 后，在模块进度行之外，**额外实时打印每一步的带时间戳事件**，便于观察耗时与卡点：
+
+```bash
+cc-pipeline run config.yaml -v
+```
+
+输出示例（关键事件）：
+
+```
+  verbose mode ON — printing step progress
+  [20:15:03] [auth] scaffold      START
+  [20:15:48] [auth] scaffold      PASS
+  [20:15:10] [auth] generate      ⏳ RATE LIMIT (retry 1/3)
+  [20:15:42] [auth] generate      ⚠️  RETRY (attempt 2) — Postcondition failed
+  [20:16:11] [auth] ↩️  JUMP: evaluate → generate (jump 1)
+  [20:16:20] [auth] evaluate      ❌ FAIL — score=45 < 60
+```
+
+| 事件 | 含义 |
+|------|------|
+| `START [file]` | 步骤开始（`per_file` 步骤带当前文件） |
+| `PASS [file]` | 步骤通过 |
+| `⏳ RATE LIMIT (retry N/3)` | 触发限流，免费退避重试（不耗预算） |
+| `⚠️  RETRY (attempt N) — <原因>` | 消耗预算的重试 |
+| `↩️  JUMP: <from> → <to> (jump N)` | `on_failure` 回跳 |
+| `❌ FAIL — <原因>` | 步骤彻底失败 |
+
+> 时间戳格式为 `[HH:MM:SS]`，前缀为 `[<module>]`。Cron / daemon 长跑时，长输出也会落盘到 `{run_dir}/daemon.log`，可用 `tail -f` 跟踪。
+
+### 11.4 收尾汇总：失败原因 + 排查命令
+
+运行结束后打印汇总。**每个失败模块会附上失败原因和一键排查命令**：
+
+```
+============================================================
+  ✓ auth                  passed
+  ✗ payment               failed — evaluate: score=45 < 60 (3 retries)
+     💡 cc-pipeline transcript --run-dir /root/tmp-1 --module payment
+============================================================
+  1 passed, 1 failed  (run_id: 2026-07-06T23-00-00)
+```
+
+- 失败原因直接显示在汇总行（哪一步、什么分数、重试了几次）
+- `💡` 行复制即可查看该模块的完整执行记录（CC 收到的 prompt、返回了什么、为什么 FAIL）
+
+### 11.5 配置预览（`--dry-run`）
+
+正式运行前用 `--dry-run` 预览，**不调 CC、不创建 worktree、0 成本**：
+
+```bash
+cc-pipeline run config.yaml --dry-run
+```
+
+输出包含：
+
+1. **步骤列表**（`per_file` 步骤会标注）
+2. **每个模块的文件表格**（纯字符串列表 → 单列；dict → 每个 key 一列）
+3. **估算 CC 调用次数**（非循环步 = 1 次/模块；`per_file` 步 = 文件数/模块）
+4. **全局变量**
+
+```
+📊 Pipeline Preview (dry-run)
+══════════════════════════════════════════════════
+
+  Steps: scaffold → generate(per_file) → evaluate
+
+  Module: auth (2 files)
+  ┌───────────────┬──────────────┐
+  │ File          │ assert_macro │
+  ├───────────────┼──────────────┤
+  │ auth_login.c  │ CHECK        │
+  │ auth_token.c  │ REQUIRE      │
+  └───────────────┴──────────────┘
+
+  Estimated: 5 CC calls
+  (scaffold=1 + generate=2 + evaluate=2)
+
+  Variables:
+    repo=/home/user/my-project
+    base_branch=main
+    concurrency=5
+    ...
+
+  ✅ Config valid. Run without --dry-run to execute.
+```
+
+> dry-run 还兼任「配置编译器」：任何一个模块编译失败（变量缺失、prompt 解析错等）都会在这里报错，跑之前就把问题挡住。
+
+---
+
+## 12. init 命令（交互式生成配置）
+
+`init` 是降门槛利器——用一段交互问答，生成可直接运行的 `config.yaml` + `prompts/` 目录，免去手写 YAML。
+
+### 基本用法
+
+```bash
+cc-pipeline init
+# → 🧩 cc-pipeline 配置生成器
+#   项目路径 repo（默认 '.'）:
+#   任务类型 1=UT生成 2=代码审查 3=自定义: 1
+#   source_dir（默认 "src/"）:
+#   模块列表逗号分隔（默认 "auth"）:
+#   assert_macro（默认 "CHECK"）:
+#   concurrency（默认 "5"）:
+```
+
+### 三种任务模板
+
+| 任务类型 | 生成的 pipeline | 生成的 prompts/ |
+|---------|----------------|----------------|
+| `1` = UT 生成 | `scaffold → generate(per_file) → evaluate`，含 `on_failure` 回跳 | `scaffold.md` / `generate.md` / `evaluate.md` |
+| `2` = 代码审查 | 单个 `review` 步骤 | `review.md` |
+| `3` = 自定义 | 单个 `step1` 步骤 | `step1.md` |
+
+生成完成后会列出所有文件，并提示下一步：
+
+```
+✅ 生成完成
+生成的文件：
+  /path/config.yaml
+  /path/prompts/scaffold.md
+  /path/prompts/generate.md
+  /path/prompts/evaluate.md
+运行: cc-pipeline run config.yaml --dry-run
+```
+
+> **技巧**：`init` 用 `str.replace` 而非 `str.format` 替换占位符，因此 prompt 里的字面
+> `{module}` / `{file}` 变量会被原样保留，不会在生成期被吃掉。
+
+### 命令参数
+
+| 参数 | 说明 |
+|------|------|
+| `--output-dir <dir>` | 生成文件的目录（默认 `.`，当前目录） |
+| `--template <name>` | ⚠️ **未实现**（声明会打印提示并忽略，仍走默认交互流程） |
+
+---
+
+## 13. check 命令（环境与配置检查）
+
+`check` 是排查前置关：一次性把环境依赖和配置正确性过一遍，**永远返回 0（advisory）**，不会因为某项失败就阻断你。
+
+### 基本用法
+
+```bash
+cc-pipeline check                      # 只查环境
+cc-pipeline check --config config.yaml # 环境 + 配置双重检查
+```
+
+### 检查项
+
+**环境探测（总是运行）：**
+
+| 检查项 | 说明 |
+|--------|------|
+| Python 版本 | 当前解释器版本 |
+| Git | `git` 是否可用 |
+| Claude Code CLI | `claude` 是否可用 |
+| Git user.name | 是否已设置（创建 commit 需要） |
+| Disk space | 当前盘剩余空间（>1GB 为 ✅） |
+
+**配置探测（带 `--config` 时额外运行）：**
+
+| 检查项 | 说明 |
+|--------|------|
+| Config load | YAML 能否加载（必填字段、executor 拼写等） |
+| Repo exists | `repo` 目录是否存在 |
+| base_branch exists | `base_branch` 在 repo 中是否存在 |
+| prompt_files present | 所有 `prompt_file` 是否就位 |
+| Dry-run preview | pipeline 能否编译（变量解析、步骤链） |
+
+### 输出示例
+
+```
+🔍 cc-pipeline Environment Check
+
+  Python 3.11.0: ✅
+  Git: ✅ /usr/bin/git
+  Claude Code CLI: ✅ /usr/local/bin/claude
+  Git user.name: ✅ John Doe
+  Disk space: ✅ 50.2 GB free
+  Config load: ✅ valid
+  Repo exists: ✅ /home/user/my-project
+  base_branch exists: ✅ main
+  prompt_files present: ✅ all found
+  Dry-run preview: ✅ compiles
+
+  Summary: 10/10 checks passed
+```
+
+> 跑之前先 `check --config`，能把绝大多数「跑到一半才报错」的问题（repo 路径错、分支名错、prompt 文件缺、配置编译失败）挡在运行前。
+
+---
+
+## 14. 定时运行（Cron）
 
 ### 使用 cron-template.sh
 
@@ -715,9 +990,11 @@ step.model  >  --model 参数  >  config.model  >  None（CC 自己决定）
 
 ---
 
-## 12. Daemon 模式（后台运行）
+## 15. Daemon 模式（后台运行）
 
 `--daemon` 让 pipeline fork 到后台运行，父进程立即退出，便于在服务器/Cron 中长跑。
+
+> **平台**：daemon 模式基于 `os.fork()`，**仅限 Unix-like 环境**（Linux / macOS / WSL）。原生 Windows 不可用。
 
 ### 启动
 
@@ -740,14 +1017,20 @@ cc-pipeline stop --run-dir <dir>            # SIGTERM，优雅退出（默认）
 cc-pipeline stop --run-dir <dir> --force    # SIGKILL，强制结束
 ```
 
-- `stop` 读取 PID 文件，向进程发信号
-- **SIGTERM（默认）**：优雅退出。框架捕获信号后，会在当前 module 边界停止，state 实时落盘，便于后续 `resume`
+- `stop` 读取 PID 文件，向进程发信号，然后**轮询最多 30 秒确认进程是否已退出**
+- **SIGTERM（默认）**：发信号后等待。框架会在合适的时机停止——注意正在进行的 CC 调用不会被立即打断，通常是**当前 step 完成后**再退出（不是立即在 module 边界）。state 实时落盘，便于后续 `resume`
 - **`--force`**：直接 SIGKILL，不等待；用于进程卡死时
-- 无论哪种方式，停止后都会清理 PID 文件
+- **停止语义可信**：若 30 秒后进程仍存活（例如卡在一个长 CC 调用里），`stop` 会老实告诉你并保留 PID 文件：
+  ```
+  Sending SIGTERM to PID 12345...
+  Process 12345 still running after 30s.
+    Try: cc-pipeline stop --run-dir <dir> --force
+  ```
+  不会误报「已停止」，也不会提前删 PID 文件。
 
 ---
 
-## 13. 崩溃恢复
+## 16. 崩溃恢复
 
 ### 运行中崩溃
 
@@ -755,8 +1038,8 @@ cc-pipeline 在 `{run_dir}/orchestrator-state.json` 持久化状态。每个 mod
 
 ```json
 {
-  "run_id": "2026-07-01T23-00-00",
-  "saved_at": "2026-07-01T23:05:32",
+  "run_id": "2026-07-06T23-00-00",
+  "saved_at": "2026-07-06T23-05:32",
   "modules": {
     "auth": {"status": "passed", "steps_completed": 3, "steps_total": 3},
     "payment": {"status": "error", "error": "disk full"},
@@ -780,7 +1063,7 @@ cc-pipeline 在 `{run_dir}/orchestrator-state.json` 持久化状态。每个 mod
 cc-pipeline status
 # 列出最近的 run
 
-cc-pipeline status --run-id 2026-07-01T23-00-00
+cc-pipeline status --run-id 2026-07-06T23-00-00
 # 显示某个 run 的各 module 状态
 ```
 
@@ -820,7 +1103,7 @@ git tag -l "pipeline/auth/*"  # 查看所有 checkpoint tag
 
 ---
 
-## 14. 运行报告
+## 17. 运行报告
 
 `report` 命令基于 `orchestrator-state.json` + 各 module 的 `transcript.jsonl` 生成报告。
 
@@ -850,7 +1133,7 @@ cc-pipeline report --run-dir <dir> --format html --config config.yaml
 
 ---
 
-## 15. 日志与调试
+## 18. 日志与调试
 
 ### Transcript 日志
 
@@ -879,15 +1162,21 @@ cat {run_dir}/auth/transcript.jsonl | python3 -m json.tool
   "event": "module_exception",
   "error": "FileNotFoundError: git not found",
   "traceback": "Traceback (most recent call last):\n  File ...\n...",
-  "ts": "2026-07-01T23:05:32"
+  "ts": "2026-07-06T23-05:32"
 }
 ```
 
 ### 调试模式
 
 ```bash
+# 配置预览（不调 CC，0 成本，挡住编译期问题）
+cc-pipeline run config.yaml --dry-run
+
 # 单 module 运行（便于调试）
 cc-pipeline run config.yaml --module auth
+
+# 详细输出（每步带时间戳）
+cc-pipeline run config.yaml -v
 
 # 低并发（避免限流）
 cc-pipeline run config.yaml --concurrency 1
@@ -895,7 +1184,7 @@ cc-pipeline run config.yaml --concurrency 1
 
 ---
 
-## 16. Transcript 命令（运行调试）
+## 19. Transcript 命令（运行调试）
 
 `transcript` 命令把 `{run_dir}/{module}/transcript.jsonl` 渲染成人类可读的执行记录，便于排查 CC 实际收到了什么 prompt、返回了什么、为什么 PASS / FAIL / RETRY。
 
@@ -920,10 +1209,48 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 | JUMP BACK | `on_failure` 回跳记录（含 from / to） |
 
 > 与 `report` 的区别：`report` 生成汇总报告（成功率、模块详情）；`transcript` 则逐事件还原 CC 的真实输入输出，是定位「CC 这次到底干了什么」的首选工具。
+> 失败模块的收尾汇总里会直接给出对应的 `transcript` 命令，复制即可运行。
 
 ---
 
-## 17. 异常处理
+## 20. examples 示例目录
+
+仓库自带两套开箱即用的示例，分别在「无 CC」和「真跑 CC」两端：
+
+```
+examples/
+├── simple.yaml              # 最小示例：单 module 单步 pipeline（repo: .，clone 即跑）
+├── quickstart-shell/        # 0 门槛：纯 shell executor，不需要 CC / API key
+│   ├── config.yaml
+│   └── run.sh
+└── quickstart-cc/           # 完整 CC 编排示例（自包含）
+    ├── config.yaml
+    ├── run.sh
+    ├── prompts/             # scaffold.md / generate.md / evaluate.md
+    └── src/                 # math_utils.py / string_utils.py（被测代码）
+```
+
+### quickstart-shell（5 分钟体验入口）
+
+- **0 依赖、0 API key、0 成本**：全程用 `shell` executor，不调用 Claude Code
+- 演示完整的三步流水线 + postcondition + depends_on 机制
+- 任何人 clone 后 `cd examples/quickstart-shell && ./run.sh` 就能跑通
+- 最理想的「先看效果」入口，也是推广给同事的首选演示
+
+### quickstart-cc（真跑一次 CC）
+
+- 自包含：含 `prompts/*.md`（prompt 卫生良好，带反踩坑指令）+ `src/*.py`（被测代码）
+- 演示 `scaffold → generate(per_file) → evaluate` 的完整 CC 编排
+- 需要配置好 Claude Code（`~/.claude/settings.json` 的 token / base_url）
+- 是「真跑一次 CC、看 trust 分层怎么工作」的最短路径
+
+### simple.yaml
+
+最小示例，`repo: .` 指向当前目录，clone 后立即可用，适合快速验证安装是否正常。
+
+---
+
+## 21. 异常处理
 
 ### Orchestrator 异常保护
 
@@ -945,7 +1272,7 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 
 ---
 
-## 18. 常见问题
+## 22. 常见问题
 
 ### Q: CC 生成的测试质量差怎么办？
 
@@ -964,7 +1291,7 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 
 ### Q: 如何支持非 UT 场景？
 
-**A:** cc-pipeline 是通用 pipeline 框架。只要把 pipeline 步骤改为你的场景（代码审查、文档生成、重构等），modules 改为你的目标单元即可。
+**A:** cc-pipeline 是通用 pipeline 框架。`cc-pipeline init` 提供「代码审查」「自定义」模板；或直接把 pipeline 步骤改为你的场景（文档生成、重构等），modules 改为你的目标单元即可。
 
 ### Q: 超时怎么处理？
 
@@ -975,7 +1302,7 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 
 ### Q: CC 一直返回 429 怎么办？
 
-**A:** 框架自动处理：
+**A:** 框架自动处理（前 **3** 次免费、每次退避 **30 秒**）：
 - 前 3 次 429：等待 30 秒后免费重试（不消耗 retry 预算）
 - 3 次后仍然 429：转为普通失败，开始消耗 retry 预算
 - retry 预算耗尽（或触发 `on_failure`）：该步骤标记为 failed / 回跳
@@ -997,7 +1324,7 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 
 ### Q: 回滚后数据安全吗？
 
-**A:** 回滚使用 `git reset --hard` + `git clean -fd --exclude=.pipeline/`，恢复到上一个成功步骤的最新 checkpoint。`.pipeline/` 目录被保留（`--exclude`）。
+**A:** 回滚使用 `git reset --hard` + `git clean -fd --exclude=.pipeline/`，恢复到上一个成功步骤的最新 checkpoint。`.pipeline/` 目录被保留（`--exclude`）。注意 worktree 内**其他未跟踪文件**会被 `git clean` 清掉。
 
 ### Q: 模型怎么指定？
 
@@ -1007,6 +1334,10 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 
 **A:** 用 `resume` 续跑（幂等，跳过已成功的 module/step，worktree 从 checkpoint 恢复）。用 `report` 生成报告定位失败原因。
 
+### Q: 为什么跑起来终端一开始没反应？
+
+**A:** 不会了。当前版本（v0.3.0）起，启动横幅（`🌙 cc-pipeline <version>` + 并发数 + 模块列表）会**无条件打印**，每个 module 完成时也会打一行 `✅/✗`。如果想要每一步的实时细节，加 `-v`。
+
 ---
 
 ## 附录
@@ -1014,27 +1345,38 @@ cc-pipeline transcript --run-dir /data/runs/job1 --module auth
 ### CLI 命令速查
 
 ```bash
-# 运行
+# —— 运行 ——
 cc-pipeline run config.yaml                        # 运行 pipeline
 cc-pipeline run config.yaml --module auth          # 只跑一个 module
 cc-pipeline run config.yaml --concurrency 3        # 指定并行度
-cc-pipeline run config.yaml --daemon               # 后台运行
 cc-pipeline run config.yaml --model glm-4.6        # 指定模型（默认 CC 自己决定）
+cc-pipeline run config.yaml -v / --verbose         # 详细输出（每步带时间戳）
+cc-pipeline run config.yaml --dry-run              # 配置预览，不调 CC、0 成本
+cc-pipeline run config.yaml --daemon               # 后台运行（仅 Unix）
 
-# 恢复
+# —— 恢复 ——
 cc-pipeline resume config.yaml --run-dir <dir>     # 幂等续跑中断的 run
 
-# 后台进程
+# —— 后台进程 ——
 cc-pipeline stop --run-dir <dir>                   # 优雅停止（SIGTERM）
 cc-pipeline stop --run-dir <dir> --force           # 强制停止（SIGKILL）
 
-# 观测
+# —— 观测 ——
 cc-pipeline status                                 # 查看运行历史
 cc-pipeline status --run-id <id>                   # 查看特定 run
+cc-pipeline status --run-dir <dir>                 # 查看特定 run 目录
 cc-pipeline report --run-dir <dir>                 # Markdown 报告
 cc-pipeline report --run-dir <dir> --format html --config <cfg>   # HTML 报告（含 DAG）
+cc-pipeline transcript --run-dir <dir>             # 查看完整执行记录（所有模块）
+cc-pipeline transcript --run-dir <dir> --module X  # 只看某个模块
 
-# 维护
+# —— 上手 ——
+cc-pipeline init                                   # 交互式生成 config.yaml + prompts/
+cc-pipeline init --output-dir <dir>                # 指定生成目录
+cc-pipeline check                                  # 环境自检
+cc-pipeline check --config config.yaml             # 环境 + 配置双重检查
+
+# —— 维护 ——
 cc-pipeline uninstall [--yes]                      # 卸载
 cc-pipeline --version                              # 版本号
 cc-pipeline --help                                 # 帮助
@@ -1047,12 +1389,14 @@ cc-pipeline --help                                 # 帮助
 | [DESIGN.md](DESIGN.md) | 完整架构设计 |
 | [ROADMAP.md](ROADMAP.md) | 开发计划与里程碑 |
 | [TESTING.md](TESTING.md) | 测试方案 |
+| [UX-AUDIT.md](UX-AUDIT.md) | 用户体验审计报告 |
 | [CONSISTENCY-REPORT.md](CONSISTENCY-REPORT.md) | 实现 vs 设计一致性 |
 
 ### 版本历史
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
+| v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默（启动横幅 + 模块进度行无条件打印）、`run --dry-run` 配置预览、preflight 运行前检查（只 warn 不停）、`stop` 停止语义可信（30s 后复查存活、不再误报 / 误删 PID）、`output_branch_prefix` 默认值改为 `cc-auto`、init/check 命令补入文档与速查表、examples/ 双示例（quickstart-shell 无 CC 入口 + quickstart-cc 完整编排） |
 | v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
 | v0.2 | 2026-07-01 | CC 上下文传递、CO 式错误处理、rate limit 保护、orchestrator 异常保护、rollback_to_latest |
 | v0.1 | 2026-06-30 | 初始版本：Phase 1-4 开发完成，135 tests |
