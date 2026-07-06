@@ -73,10 +73,18 @@ class PipelineCompiler:
                 )
 
         # Build base variables for this module
+        sf_list = []
+        if module.source_files:
+            for sf in module.source_files:
+                if isinstance(sf, dict):
+                    sf_list.append(sf.get("path", str(sf)))
+                else:
+                    sf_list.append(str(sf))
         base_vars = {
             "module": module.name,
             "source_dir": module.source_dir,
             "spec_id": module.spec_id,
+            "source_files": ", ".join(sf_list),
             **module.variables,
         }
 
@@ -84,6 +92,17 @@ class PipelineCompiler:
         compiled: list[CompiledStep] = []
         for step in self.config.pipeline:
             retry = step.retry if step.retry is not None else self.config.max_retries
+
+            # Warn: prompt uses {file} but step has no loop
+            if step.loop != "per_file":
+                prompt_text = self._resolve_prompt(step)
+                if "{file}" in prompt_text:
+                    import warnings as _w
+                    _w.warn(
+                        f"Step '{step.id}': prompt uses {{file}} but step has no "
+                        f"loop: per_file — {{file}} will not be replaced",
+                        stacklevel=2,
+                    )
 
             if step.loop == "per_file":
                 if not module.source_files:
