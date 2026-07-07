@@ -283,3 +283,175 @@ pip install → cc-pipeline init → dry-run 💀 → 修 config → dry-run �
 5. ✅ **init 交互式生成** — 方向正确，只是实现有 bug
 6. ✅ **preflight warning** — "Repo is not a git repository" 这种提醒很贴心
 7. ✅ **错误消息中文+英文混合** — 适合中国开发者
+8. ✅ **on_failure 回跳** — transcript 中清晰显示 JUMP BACK + 跳跃次数
+9. ✅ **verbose 并行输出** — `[23:09:31] [alpha] step1 START/PASS` 格式清晰，时间戳+模块名+步骤名
+
+---
+
+## 深度使用发现（程序员视角）
+
+> 以下问题来自端到端真实运行：多模块并行、postcondition expect、on_failure 回跳、transcript、status/report、clean、resume
+
+### 🔴 P0-3：`status` 命令输出无意义
+
+```
+$ cc-pipeline status
+  Recent runs:
+    mod1
+    orchestrator-state.json
+    worktrees
+```
+
+这**不是 run 列表**——这是 `ls ~/.cc-pipeline/runs/` 的结果。把目录内容当 run 列表展示了。程序员看到 `orchestrator-state.json` 和 `worktrees` 出现在 runs 列表里会非常困惑。
+
+**根因：** status 命令把 run 根目录下的所有条目当 run 列出了，而非扫描子目录或读取 state 文件中的 run_id。
+
+**修复：** status 应该读取每个 run 的 state 文件，展示：
+```
+$ cc-pipeline status
+  Recent runs:
+    2026-07-07 23:09 — 3 modules (3 passed, 0 failed) — config_multi.yaml
+    2026-07-07 23:08 — 1 module  (0 passed, 1 failed) — config_fail.yaml
+```
+
+### 🔴 P0-4：`report` 和 `resume` 找不到运行数据
+
+运行成功后，`~/.cc-pipeline/` 几乎是空的（只有 runs/ 空目录）。实际 state 和 transcript 存在**项目目录的 `.pipeline/` 下**。但 `report --run-dir` 指向 `~/.cc-pipeline/runs/` 时报 "State file not found"。
+
+**程序员的困惑：** 刚跑完的 pipeline，status 找不到，report 找不到，resume 不知道用哪个路径。运行数据到底在哪？
+
+**根因：** run 数据的存储位置和 CLI 命令期望的默认路径不一致。
+
+**修复：** 统一存储路径，或让 status/report/resume 自动发现最近的 run。
+
+### 🟡 P1-6：`variables` 字段定义了但 dry-run 不显示、prompt 中不展开
+
+```yaml
+variables:
+  test_framework: pytest
+```
+
+dry-run 警告 `Unknown variable {test_framework}`，且 Variables 区域不显示自定义变量。
+
+**程序员的困惑：** 我明明定义了 variables，为什么说 unknown？是字段名写错了？还是 variables 的用法变了？
+
+**需要验证：** variables 的文档说明 vs 实际行为是否一致。如果不支持 prompt 中用 `{var}` 引用 variables，文档需要明确说明。
+
+### 🟡 P1-7：`command` 字段在步骤级是 "Unknown field"
+
+```yaml
+- id: verify
+  executor: shell
+  command: "pytest tests/"
+```
+
+dry-run 输出：`UserWarning: Unknown field 'command' in step 'verify' — ignored`
+
+**程序员的困惑：** shell executor 不应该用 `command` 来指定要跑的命令吗？USER-GUIDE 里 shell executor 的示例用的是 `prompt` 字段而非 `command`。但 `command` 是更直觉的字段名。
+
+**修复：** 要么接受 `command` 作为 `prompt` 的别名（shell executor 语境下更自然），要么文档明确说明 shell executor 也用 `prompt` 字段。
+
+### 🟡 P1-8：`--module` 过滤不存在的模块不报错
+
+```
+$ cc-pipeline run config.yaml --dry-run --module nonexistent
+  ✅ Config valid. Run without --dry-run to execute.
+```
+
+dry-run 正常输出所有模块，`--module nonexistent` 被静默忽略。
+
+**程序员的困惑：** 我指定了一个不存在的模块，你没告诉我。实际运行时会发生什么？跳过所有模块？报错？
+
+**修复：** `--module foo` 时检查 foo 是否在 config.modules 中，不存在则报错退出。
+
+### 🟡 P1-9：transcript 跨多次运行累积，不按 run 分隔
+
+```
+$ cc-pipeline transcript --run-dir ~/.cc-pipeline/runs --module mod1
+```
+
+输出包含了**所有历史运行**的记录（多次不同配置的运行混在一起），没有按 run_id 分隔。程序员想看"最近一次运行的详细日志"，但看到的是全部历史的堆叠。
+
+**修复：** transcript 默认只显示最近一次运行，加 `--all` 查看历史，或 `--run-id` 精确过滤。
+
+### 🟡 P1-10：运行中没有模块级进度总览
+
+3 个模块并行运行时，控制台逐条输出 `[alpha] step1 PASS`。但程序员想看的是总览：
+
+```
+Module    Status     Step       Elapsed
+────────  ─────────  ─────────  ───────
+alpha     ✅ done    —          0.3s
+beta      🔄 running step2      2.1s
+gamma     ⏳ queued  —          —
+```
+
+并行 5+ 模块时，逐条日志会刷屏。
+
+### 🟡 P1-11：`clean` 只清 worktree 不清分支
+
+```
+$ cc-pipeline clean --repo /tmp/ux-deep
+  🗑️  worktree: ~/.cc-pipeline/runs/worktrees/mod1
+  ✅ Cleaned: 1 worktrees, 0 branches, 4 tags.
+
+$ git branch
+  cc-auto/mod1    ← 还在！
+```
+
+清了 worktree 但 `cc-auto/*` 分支残留。多次运行后分支会堆积。
+
+**修复：** `clean --all` 应该同时清理 worktree + 分支 + tag + .pipeline 目录。
+
+### 🟡 P1-12：失败后没有告诉用户"下一步该怎么做"
+
+```
+  ✗ mod1     failed — Step 'fail_step' failed after 2 attempts
+  💡 cc-pipeline transcript --run-dir ... --module mod1
+```
+
+提示了 transcript 命令。但程序员真正想知道的是：**为什么失败？怎么修？**
+
+**修复：** 失败时追加一段诊断信息：
+```
+  ✗ mod1     failed — Step 'fail_step' failed after 2 attempts
+  
+  📋 Last error: exit code 1, stderr: (空)
+  💡 Next steps:
+     1. cc-pipeline transcript --run-dir ... --module mod1  — 查看完整日志
+     2. cc-pipeline resume config.yaml --run-dir ...        — 修复后继续
+     3. cc-pipeline run config.yaml --module mod1           — 只重跑这个模块
+```
+
+### 🟢 P2-8：postcondition expect 失败时 transcript 不显示实际值
+
+```
+  ❌ FAIL — Condition failed: $.coverage >= 80
+```
+
+程序员想知道：**实际值是多少？** 50？75？还是字段缺失？
+
+**修复：**
+```
+  ❌ FAIL — Condition failed: $.coverage >= 80 (actual: 50)
+```
+
+### 🟢 P2-9：运行输出中 `concurrency` 总是显示 5，不管配置文件写的多少
+
+```
+🌙 cc-pipeline 0.3.0
+   concurrency=5  modules=['mod1', 'mod2', 'mod3']
+```
+
+config 里写了 `concurrency: 3`，但输出显示 5（默认值）。实际是否按 3 跑了？
+
+### 🟢 P2-10：on_failure 回跳的 transcript 追踪号（jump N）很好
+
+```
+  ↩️  JUMP BACK: step2 → step1 (jump 1)
+```
+
+这个体验很好。但如果有 max_jumps 限制，应该在跳到上限时明确提示：
+```
+  🚫 Max jumps reached (3) — stopping retries
+```
