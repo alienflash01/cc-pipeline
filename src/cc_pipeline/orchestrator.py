@@ -121,6 +121,7 @@ class Orchestrator:
                     result = self._run_module(module.name)
                     results.append(result)
                 except Exception as e:
+                    print(f"  ❌ Module '{module.name}' failed: {e}")
                     results.append({
                         "status": "failed",
                         "module": module.name,
@@ -148,6 +149,7 @@ class Orchestrator:
                     result = future.result()
                     results.append(result)
                 except Exception as e:
+                    print(f"  ❌ Module '{module_name}' failed: {e}")
                     results.append({
                         "status": "failed",
                         "module": module_name,
@@ -254,14 +256,18 @@ class Orchestrator:
                     merge_ok = self._merge_branch(module_name, branch)
                 except Exception as e:
                     logger.event("merge_error", error=str(e))
+                    print(f"  ⚠️  Merge failed: {e}")
                 if merge_ok:
                     self.worktree_mgr.cleanup(module_name)
                     logger.event("merge_success", step="merge", module=module_name)
+                    print(f"  🔀 Merged {branch} → {self.config.base_branch}")
                 else:
                     # Merge failed or conflict — preserve worktree for manual fix
                     self.worktree_mgr.preserve(module_name)
                     logger.event("merge_skipped", step="merge", module=module_name,
                                  info="worktree preserved for manual merge")
+                    print(f"  ⚠️  Merge conflict — worktree preserved at {self.worktree_mgr._worktrees.get(module_name, '?')}")
+                    print(f"     Manual merge: git checkout {self.config.base_branch} && git merge {branch}")
             else:
                 self.worktree_mgr.preserve(module_name)
 
@@ -272,6 +278,7 @@ class Orchestrator:
             # Log full traceback to transcript
             tb_str = tb_module.format_exc()
             logger.event("module_exception", error=str(e), traceback=tb_str)
+            print(f"  ❌ Module '{module_name}' exception: {e}")
 
             # Update state to error
             state.update_module(module_name, status="error", error=str(e))
