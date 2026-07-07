@@ -1240,8 +1240,16 @@ def _cmd_init(args) -> int:
     modules_default = "auth"
 
     source_dir = _ask(f'source_dir（默认 "{source_dir_default}"）: ', source_dir_default)
-    modules_str = _ask(f'模块列表逗号分隔（默认 "{modules_default}"）: ', modules_default)
-    first_module = modules_str.split(",")[0].strip() or modules_default
+    # Module names: validate no path separators, no special chars
+    import re as _re
+    while True:
+        modules_str = _ask(f'模块列表逗号分隔（默认 "{modules_default}"）: ', modules_default)
+        names = [n.strip() for n in modules_str.split(",")]
+        bad = [n for n in names if not _re.match(r'^[a-zA-Z0-9_][a-zA-Z0-9_\-]*$', n)]
+        if not bad:
+            break
+        print(f'  ❌ 模块名不合法: {bad}（只能用字母、数字、下划线、连字符）')
+    first_module = names[0]
 
     # task-type-specific extras + pick the templates to write
     if task_type == "2":
@@ -1263,7 +1271,16 @@ def _cmd_init(args) -> int:
         }
         placeholders = {"assert_macro": assert_macro}
 
-    concurrency = _ask('concurrency（默认 "5"）: ', "5")
+    # Concurrency: validate positive integer
+    while True:
+        concurrency = _ask('concurrency（默认 "5"）: ', "5")
+        try:
+            c = int(concurrency)
+            if c > 0:
+                break
+            print('  ❌ concurrency 必须 > 0')
+        except ValueError:
+            print(f'  ❌ concurrency 必须是正整数，收到: {concurrency}')
 
     # Where to write. output_dir defaults to "."; resolve to an absolute path so
     # the generated files land predictably regardless of CWD.
