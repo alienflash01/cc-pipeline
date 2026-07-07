@@ -249,11 +249,19 @@ class Orchestrator:
 
             # On success: merge to base_branch + cleanup
             if result["status"] == "passed":
+                merge_ok = False
                 try:
-                    self._merge_branch(module_name, branch)
+                    merge_ok = self._merge_branch(module_name, branch)
                 except Exception as e:
                     logger.event("merge_error", error=str(e))
-                self.worktree_mgr.cleanup(module_name)
+                if merge_ok:
+                    self.worktree_mgr.cleanup(module_name)
+                    logger.event("merge_success", step="merge", module=module_name)
+                else:
+                    # Merge failed or conflict — preserve worktree for manual fix
+                    self.worktree_mgr.preserve(module_name)
+                    logger.event("merge_skipped", step="merge", module=module_name,
+                                 info="worktree preserved for manual merge")
             else:
                 self.worktree_mgr.preserve(module_name)
 
@@ -280,16 +288,31 @@ class Orchestrator:
             self._print_module_summary(err_result)
             return err_result
 
-    def _merge_branch(self, module_name: str, branch: str) -> None:
-        """Merge module worktree branch back to base_branch."""
+    def _merge_branch(self, module_name: str, branch: str) -> bool:
+        """Merge module worktree branch back to base_branch.
+
+        Returns:
+            True if merge succeeded.
+            False if merge had conflicts (worktree preserved for manual fix).
+        Raises:
+            Exception for non-merge errors (git checkout failure, etc).
+        """
         import subprocess as _sp
-        _sp.run(
-            ["git", "checkout", self.config.base_branch],
-            cwd=self.worktree_mgr.repo_path,
-            capture_output=True, check=True,
-        )
-        _sp.run(
+        repo = str(self.worktree_mgr.repo_path)
+
+        # Checkout base_branch
+        _sp.run(["git", "checkout", self.config.base_branch],
+                cwd=repo, capture_output=True, check=True)
+
+        # Merge with conflict detection (check=False)
+        result = _sp.run(
             ["git", "merge", "--no-edit", branch],
-            cwd=self.worktree_mgr.repo_path,
-            capture_output=True, check=True,
+            cwd=repo, capture_output=True, text=True,
         )
+
+        if result.returncode != 0:
+            # Merge conflict — abort merge to leave repo clean
+            _sp.run(["git", "merge", "--abort"], cwd=repo, capture_output=True)
+            return False
+
+        return True
