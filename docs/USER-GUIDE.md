@@ -204,13 +204,15 @@ cc-pipeline run modules.yaml
 | `base_branch` | string | `main` | worktree 基准分支 |
 | `concurrency` | int | `5` | module 间并行数 |
 | `max_retries` | int | `3` | 全局默认重试次数 |
-| `output_branch_prefix` | string | `cc-auto` | PR 分支前缀 |
+| `output_branch_prefix` | string | `cc-auto` | worktree 分支前缀 |
 | `model` | string | `""` | 全局默认模型（空 = CC 自己决定） |
 | `worktree_root` | string | `""` | worktree 根目录（相对路径相对于 `repo`，绝对路径原样使用） |
-| `pr_labels` | list | `[]` | 创建 PR 时附加的标签 |
-| `pr_title_template` | string | `""` | PR 标题模板 |
+| `prompt_prefix` | string | `""` | 全局公共上下文（自动拼接到每个 step 的 prompt 开头） |
+| `snippets` | dict | `{}` | 命名文本块，通过 `{{snippet:name}}` 在 prompt 任意位置引用 |
 
 > **变更**：`output_branch_prefix` 默认值已从 `ut-auto` 改为 `cc-auto`（cc-pipeline 是通用框架，不再特指 UT）。
+> **变更**：`pr_labels` / `pr_title_template` 已删除（PR 功能移除，改为自动 merge worktree 分支到 base_branch）。
+> **变更**：不配 `base_branch` 时自动检测 git 默认分支。
 
 ### Module 字段
 
@@ -258,8 +260,14 @@ max_retries: 3
 output_branch_prefix: cc-nightly
 model: glm-4.6                  # 全局默认模型（留空则 CC 自己决定）
 worktree_root: ../worktrees     # worktree 创建在 repo 的上级目录 ../worktrees
-pr_labels: [auto-generated, unit-test]
-pr_title_template: "[UT] {module}"
+prompt_prefix: |                # 全局公共上下文（所有 step 自动拼接）
+  编译命令：make test
+  断言宏：CHECK
+snippets:                        # 命名文本块，prompt 中用 {{snippet:name}} 引用
+  build: |
+    使用 subagent 编译：cd {source_dir} && make test
+  dtest: |
+    断言宏：CHECK（dtest 框架）
 
 pipeline:
   - id: scaffold
@@ -286,7 +294,7 @@ pipeline:
 
   - id: verify
     executor: shell
-    command: "gcov src/{module}/*.c && lcov --summary -o .pipeline/generate.verified.json"
+    prompt: "gcov src/{module}/*.c && lcov --summary -o .pipeline/generate.verified.json"
     depends_on: generate
 
   - id: evaluate
@@ -423,7 +431,7 @@ modules:
 ```yaml
 - id: verify
   executor: shell
-  command: "gcov src/{module}/*.c && lcov --summary"
+  prompt: "gcov src/{module}/*.c && lcov --summary"
   postcondition:
     shell: "echo '{\"line\": 85, \"branch\": 72}'"
     expect: "$.line >= 80 && $.branch >= 70"
