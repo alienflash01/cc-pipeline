@@ -94,7 +94,11 @@ def load_config(path: str) -> PipelineConfig:
         with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
     except yaml.YAMLError as e:
-        raise ValueError(f"YAML syntax error: {e}") from e
+        raise ValueError(
+            f"YAML syntax error: {e}\n"
+            f"提示：检查缩进是否一致（用空格而非 Tab），"
+            f"key 后面必须有冒号+空格。"
+        ) from e
 
     if raw is None:
         raise ValueError("Config file is empty")

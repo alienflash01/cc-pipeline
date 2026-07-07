@@ -127,11 +127,19 @@ def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResu
                 reason="All conditions passed",
             )
 
+    # Build actual value summary for failure message
+    actual_summary = ""
+    try:
+        import json as _json
+        actual_summary = " (actual: " + _json.dumps(data, ensure_ascii=False)[:200] + ")"
+    except Exception:
+        pass
+
     return PostconditionResult(
         passed=False,
         stdout=stdout,
         stderr=stderr,
-        reason=f"Condition failed: {expect}",
+        reason=f"Condition failed: {expect}{actual_summary}",
     )
 
 

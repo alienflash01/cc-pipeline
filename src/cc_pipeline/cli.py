@@ -400,6 +400,13 @@ def _cmd_run(args) -> int:
     # Preflight: warn on environment issues (missing CC CLI, bad repo/branch, ...)
     _preflight_check(config, args)
 
+    # Filter to single module if specified (before dry-run so it's respected)
+    if args.module:
+        config.modules = [m for m in config.modules if m.name == args.module]
+        if not config.modules:
+            print(f"Module '{args.module}' not found in config", file=sys.stderr)
+            return 1
+
     # Dry-run: preview only — no run_dir, no worktree, no CC calls
     if getattr(args, "dry_run", False):
         return _do_dry_run(config, args.config)
@@ -437,13 +444,6 @@ def _cmd_run(args) -> int:
     # Override concurrency if specified
     if args.concurrency is not None:
         config.concurrency = args.concurrency
-
-    # Filter to single module if specified
-    if args.module:
-        config.modules = [m for m in config.modules if m.name == args.module]
-        if not config.modules:
-            print(f"Module '{args.module}' not found in config", file=sys.stderr)
-            return 1
 
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
@@ -1455,15 +1455,15 @@ def _cmd_clean(args) -> int:
     # Prune
     subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True)
 
-    # Find and delete cc-auto branches
+    # Find and delete cc-auto branches (match cc-auto, cc-auto/mod1, etc.)
     result = subprocess.run(
-        ["git", "branch", "--list", "cc-auto-*"],
+        ["git", "branch", "--list", "cc-auto*", "cc-auto/*"],
         cwd=repo, capture_output=True, text=True,
     )
     br_count = 0
     for line in result.stdout.splitlines():
         branch = line.strip().lstrip("* ").strip()
-        if branch:
+        if branch and ("cc-auto" in branch):
             subprocess.run(["git", "branch", "-D", branch], cwd=repo, capture_output=True)
             print(f"  🗑️  branch: {branch}")
             br_count += 1
