@@ -199,9 +199,13 @@ class PipelineCompiler:
         snippets = getattr(self.config, "snippets", {})
         if snippets:
             import re as _re
+            import warnings as _w
             def _replace_snippet(m):
                 name = m.group(1)
-                return snippets.get(name, m.group(0))
+                if name in snippets:
+                    return snippets[name]
+                _w.warn(f"Snippet '{name}' not defined — kept as-is", stacklevel=2)
+                return m.group(0)
             text = _re.sub(r"\{\{snippet:(\w+)\}\}", _replace_snippet, text)
 
         return text

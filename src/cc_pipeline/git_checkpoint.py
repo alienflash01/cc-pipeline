@@ -83,10 +83,10 @@ class GitCheckpoint:
             tag = f"pipeline/{module}/{step}/{attempt}"
 
         # Hard reset to the tagged commit
-        self._run_git(["reset", "--hard", tag])
+        self._run_git(["reset", "--hard", tag], check=True)
 
         # Clean untracked files (but preserve .pipeline/)
-        self._run_git(["clean", "-fd", "--exclude=.pipeline/"])
+        self._run_git(["clean", "-fd", "--exclude=.pipeline/"], check=True)
 
     def find_latest_checkpoint(self, step: str, module: str) -> str | None:
         """Find the latest checkpoint tag for a step/module.
@@ -128,8 +128,8 @@ class GitCheckpoint:
         if latest is None:
             return False
 
-        self._run_git(["reset", "--hard", latest])
-        self._run_git(["clean", "-fd", "--exclude=.pipeline/"])
+        self._run_git(["reset", "--hard", latest], check=True)
+        self._run_git(["clean", "-fd", "--exclude=.pipeline/"], check=True)
         return True
 
     def list_completed_steps(self, module: str) -> list[str]:

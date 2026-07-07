@@ -91,7 +91,7 @@ def load_config(path: str) -> PipelineConfig:
         FileNotFoundError: If file doesn't exist.
     """
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
     except yaml.YAMLError as e:
         raise ValueError(f"YAML syntax error: {e}") from e

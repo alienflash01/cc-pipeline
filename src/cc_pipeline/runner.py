@@ -294,7 +294,7 @@ class ModuleRunner:
                     "module": self.module_name,
                     "steps_completed": completed,
                     "steps_total": total,
-                    "error": f"Step '{step.step_id}' failed after {step.retry + 1} attempts",
+                    "error": f"Step '{step.step_id}' failed after {max(0, step.retry) + 1} attempts",
                 }
 
             step_idx += 1

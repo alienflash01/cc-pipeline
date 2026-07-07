@@ -34,13 +34,20 @@ def evaluate(
     Returns:
         PostconditionResult with passed=True if conditions are met.
     """
-    result = subprocess.run(
-        shell,
-        shell=True,
-        cwd=cwd,
-        capture_output=True,
-        timeout=timeout,
-    )
+    try:
+        result = subprocess.run(
+            shell,
+            shell=True,
+            cwd=cwd,
+            capture_output=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return PostconditionResult(
+            passed=False, stdout="", stderr="",
+            reason=f"Shell timed out after {timeout}s",
+            shell_command=shell,
+        )
 
     # Decode safely (handle binary output)
     stdout = result.stdout.decode("utf-8", errors="replace") if isinstance(result.stdout, bytes) else (result.stdout or "")
