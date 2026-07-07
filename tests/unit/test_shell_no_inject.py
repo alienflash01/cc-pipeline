@@ -6,7 +6,7 @@ from unittest.mock import patch, MagicMock
 class TestShellNoInjection:
     """Shell executor uses raw prompt — no context, no output instruction."""
 
-    def test_shell_prompt_not_modified(self, tmp_path):
+    def test_shell_command_not_modified(self, tmp_path):
         """Shell executor gets the original prompt, not injected version."""
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep

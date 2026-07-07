@@ -22,7 +22,7 @@ class TestStepModelField:
         config = PipelineConfig(
             repo="/tmp",
             model="glm-4.6",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
@@ -31,7 +31,7 @@ class TestStepModelField:
     def test_config_model_defaults_empty(self):
         config = PipelineConfig(
             repo="/tmp",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )

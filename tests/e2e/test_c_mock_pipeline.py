@@ -41,17 +41,17 @@ def _make_shell_config(repo_path):
         pipeline=[
             PipelineStep(
                 id="check", executor="shell",
-                command="echo checking {module}",
+                prompt="echo checking {module}",
                 postcondition={"shell": "echo ok", "expect": "true"},
             ),
             PipelineStep(
                 id="build", executor="shell",
-                command="echo building {file}",
+                prompt="echo building {file}",
                 loop="per_file",
             ),
             PipelineStep(
                 id="test", executor="shell",
-                command="make test",
+                prompt="make test",
                 postcondition={"shell": "make test 2>&1 | tail -1", "expect": "contains('passed')"},
             ),
         ],

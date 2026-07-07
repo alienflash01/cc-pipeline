@@ -18,7 +18,6 @@ class CompiledStep:
     rendered_prompt: str
     postcondition: dict | None = None
     retry: int = 3
-    rollback: str = "git-checkpoint"
     output: str | None = None
     depends_on: str | None = None
     loop_file: str | None = None  # set when this is a loop expansion
@@ -137,7 +136,6 @@ class PipelineCompiler:
                         rendered_prompt=render(self._resolve_prompt(step), step_vars),
                         postcondition=self._render_postcondition(step, vars_with_file),
                         retry=retry,
-                        rollback=step.rollback,
                         output=step.output,
                         depends_on=step.depends_on,
                         loop_file=loop_file,
@@ -155,7 +153,6 @@ class PipelineCompiler:
                     rendered_prompt=render(self._resolve_prompt(step), step_vars),
                     postcondition=self._render_postcondition(step, base_vars),
                     retry=retry,
-                    rollback=step.rollback,
                     output=step.output,
                     depends_on=step.depends_on,
                     model=step.model,
@@ -176,20 +173,12 @@ class PipelineCompiler:
         return compiled
 
     def _resolve_prompt(self, step: PipelineStep) -> str:
-        """Return the effective prompt/command for a step.
+        """Return the effective prompt for a step.
 
-        Rules:
-          1. Shell executor: use step.command if set, then step.prompt, then prompt_file.
-          2. CC/judge executor: use step.prompt if set, then prompt_file.
-          3. prompt_file is loaded from disk if both prompt and command are empty.
+        All executors (shell, claude-code, judge) read from the same place:
+          1. step.prompt if set.
+          2. Otherwise step.prompt_file (loaded from disk).
         """
-        if step.executor == "shell":
-            if step.command:
-                return step.command
-            if step.prompt:
-                return step.prompt
-
-        # CC / judge
         if step.prompt:
             return step.prompt
 

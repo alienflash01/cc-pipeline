@@ -116,7 +116,7 @@ class TestOrchestratorModuleSummary:
             concurrency=1,  # serial → deterministic output
             pipeline=[PipelineStep(
                 id="x", executor="shell",
-                command="echo ok",
+                prompt="echo ok",
                 postcondition={"shell": "true"},
             )],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"])],
@@ -151,7 +151,7 @@ class TestOrchestratorModuleSummary:
             concurrency=1,
             pipeline=[PipelineStep(
                 id="x", executor="shell",
-                command="echo ok",
+                prompt="echo ok",
                 postcondition={"shell": "false"},  # always fails → module fails
             )],
             modules=[Module(name="crypto", source_dir="src/", source_files=["a.c"])],

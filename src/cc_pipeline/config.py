@@ -11,18 +11,14 @@ class PipelineStep:
     """A single step in the pipeline."""
     id: str
     executor: str  # "claude-code" | "shell" | "judge"
-    prompt: str = ""
-    command: str = ""  # shell executor uses this instead of prompt
+    prompt: str = ""  # all executors (incl. shell) read from here
     prompt_file: str | None = None  # load prompt from external file
     model: str = ""  # per-step model override (empty = use global)
     loop: str | None = None  # "per_file" | None
     retry: int | None = None
-    rollback: str = "git-checkpoint"
     output: str | None = None
     depends_on: str | None = None
     postcondition: dict | None = None
-    on_complete: list | None = None
-    skill: str | None = None
     timeout: int | None = None
     on_failure: str | None = None  # jump-back target step_id on failure
     on_failure_max_jumps: int = 2  # max jump-back count
@@ -65,10 +61,18 @@ class PipelineConfig:
     output_branch_prefix: str = "cc-auto"
     model: str = ""  # global default model (empty = CC decides)
     worktree_root: str = ""  # where to create worktrees (empty = framework decides)
-    pr_labels: list[str] = field(default_factory=list)
-    pr_title_template: str = ""
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
+
+
+# Step fields recognized in YAML. Anything else triggers an "unknown field"
+# warning and is silently ignored. Kept module-level so it is testable.
+_KNOWN_STEP_FIELDS = {
+    "id", "executor", "prompt", "prompt_file", "model",
+    "loop", "retry", "output", "depends_on",
+    "postcondition", "timeout",
+    "on_failure", "on_failure_max_jumps", "output_prompt",
+}
 
 
 def load_config(path: str) -> PipelineConfig:
@@ -106,10 +110,6 @@ def load_config(path: str) -> PipelineConfig:
         raise ValueError("Missing required field: pipeline (or empty list)")
     
     # Parse pipeline steps
-    _KNOWN_STEP_FIELDS = {"id", "executor", "prompt", "command", "prompt_file", "model",
-                          "loop", "retry", "rollback", "output", "depends_on",
-                          "postcondition", "on_complete", "skill", "timeout",
-                          "on_failure", "on_failure_max_jumps", "output_prompt"}
     pipeline = []
     for step_raw in raw["pipeline"]:
         # Warn on unknown fields
@@ -125,14 +125,10 @@ def load_config(path: str) -> PipelineConfig:
             prompt=step_raw.get("prompt", ""),
             loop=step_raw.get("loop"),
             retry=step_raw.get("retry"),
-            rollback=step_raw.get("rollback", "git-checkpoint"),
             output=step_raw.get("output"),
             depends_on=step_raw.get("depends_on"),
             postcondition=step_raw.get("postcondition"),
-            on_complete=step_raw.get("on_complete"),
-            skill=step_raw.get("skill"),
             model=step_raw.get("model", ""),
-            command=step_raw.get("command", ""),
             prompt_file=step_raw.get("prompt_file"),
             timeout=step_raw.get("timeout"),
             on_failure=step_raw.get("on_failure"),
@@ -272,15 +268,8 @@ def load_config(path: str) -> PipelineConfig:
             import warnings as _sd_w
             _sd_w.warn(f"Module '{mod.name}' has empty source_dir", stacklevel=2)
 
-    # Warn about unimplemented fields
-    import warnings as _warnings
-    for step in pipeline:
-        if step.on_complete:
-            _warnings.warn(f"Step '{step.id}': on_complete field is not yet implemented, ignored", stacklevel=2)
-        if step.skill:
-            _warnings.warn(f"Step '{step.id}': skill field is not yet implemented, ignored", stacklevel=2)
-
     # Warn when executor field is missing (defaults to claude-code)
+    import warnings as _warnings
     for step_raw in raw["pipeline"]:
         if "executor" not in step_raw:
             _warnings.warn(
@@ -327,8 +316,6 @@ def load_config(path: str) -> PipelineConfig:
         output_branch_prefix=raw.get("output_branch_prefix", "cc-auto"),
         model=raw.get("model", ""),
         worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
-        pr_labels=raw.get("pr_labels", []),
-        pr_title_template=raw.get("pr_title_template", ""),
         pipeline=pipeline,
         modules=modules,
     )

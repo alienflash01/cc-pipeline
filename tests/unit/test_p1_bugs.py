@@ -40,7 +40,7 @@ class TestIssue3PRSilentSwallow:
         config = PipelineConfig(
             repo=str(git_repo),
             concurrency=1,
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok",
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok",
                                    postcondition={"shell": "true"})],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
                            variables={"line_threshold": 80, "branch_threshold": 70})],
@@ -113,8 +113,8 @@ class TestIssue20CircularDependency:
         config = PipelineConfig(
             repo="/tmp",
             pipeline=[
-                PipelineStep(id="a", executor="shell", command="echo a", depends_on="b"),
-                PipelineStep(id="b", executor="shell", command="echo b", depends_on="a"),
+                PipelineStep(id="a", executor="shell", prompt="echo a", depends_on="b"),
+                PipelineStep(id="b", executor="shell", prompt="echo b", depends_on="a"),
             ],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                            variables={"line_threshold": 80, "branch_threshold": 70})],
@@ -248,7 +248,7 @@ class TestIssue37DependsOnNonexistent:
         config = PipelineConfig(
             repo="/tmp",
             pipeline=[
-                PipelineStep(id="a", executor="shell", command="echo a", depends_on="nonexistent"),
+                PipelineStep(id="a", executor="shell", prompt="echo a", depends_on="nonexistent"),
             ],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                            variables={"line_threshold": 80, "branch_threshold": 70})],
@@ -284,7 +284,7 @@ class TestIssue42StopIteration:
         config = PipelineConfig(
             repo=str(git_repo),
             concurrency=1,
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok",
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok",
                                    postcondition={"shell": "true"})],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"],
                            variables={"line_threshold": 80, "branch_threshold": 70})],

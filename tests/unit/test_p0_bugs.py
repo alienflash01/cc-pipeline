@@ -35,7 +35,7 @@ class TestIssue33CommandNotParsed:
     """load_config doesn't read 'command' and 'prompt_file' from YAML."""
 
     def test_command_parsed_from_yaml(self, tmp_path):
-        """YAML with command: field should populate PipelineStep.command."""
+        """YAML with prompt: field for shell executor populates PipelineStep.prompt."""
         from cc_pipeline.config import load_config
 
         config_file = tmp_path / "config.yaml"
@@ -44,18 +44,18 @@ repo: {tmp_path}
 pipeline:
   - id: verify
     executor: shell
-    command: echo HELLO
+    prompt: echo HELLO
 modules:
   - name: m
     source_dir: src/
     source_files: [a.c]
-    coverage:
+    variables:
       line_threshold: 80
       branch_threshold: 70
 """)
         config = load_config(str(config_file))
-        assert config.pipeline[0].command == "echo HELLO", \
-            "command field not parsed from YAML"
+        assert config.pipeline[0].prompt == "echo HELLO", \
+            "prompt field not parsed from YAML"
 
     def test_prompt_file_parsed_from_yaml(self, tmp_path):
         """YAML with prompt_file: field should populate PipelineStep.prompt_file."""

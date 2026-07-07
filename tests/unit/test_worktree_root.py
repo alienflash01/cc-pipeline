@@ -96,7 +96,7 @@ modules:
         config = PipelineConfig(
             repo=str(repo),
             worktree_root=str(wt_root),
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"])],
         )
         orch = Orchestrator(config=config, run_dir=str(tmp_path / "runs"))

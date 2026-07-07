@@ -50,7 +50,7 @@ class TestCrossProjectSupport:
         config = PipelineConfig(
             repo="/home/user/my-project",
             base_branch="develop",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
@@ -63,30 +63,23 @@ class TestCrossProjectSupport:
         config = PipelineConfig(
             repo="/tmp",
             output_branch_prefix="code-review",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         assert config.output_branch_prefix == "code-review"
 
-    def test_pr_labels_differ_by_project(self):
         from cc_pipeline.config import PipelineConfig, PipelineStep, Module
 
         ut_config = PipelineConfig(
             repo="/tmp/proj1",
-            pr_labels=["ut", "auto"],
-            pr_title_template="UT for {module}",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
         review_config = PipelineConfig(
             repo="/tmp/proj2",
-            pr_labels=["code-review", "auto"],
-            pr_title_template="Code Review: {module}",
-            pipeline=[PipelineStep(id="x", executor="shell", command="echo ok")],
+            pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="m", source_dir="src/", source_files=["a.c"],
                           variables={"line_threshold": 80, "branch_threshold": 70})],
         )
-        assert ut_config.pr_labels == ["ut", "auto"]
-        assert review_config.pr_labels == ["code-review", "auto"]

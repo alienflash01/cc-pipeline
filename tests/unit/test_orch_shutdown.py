@@ -40,7 +40,7 @@ class TestGracefulShutdown:
             concurrency=1,  # serial to control ordering
             pipeline=[PipelineStep(
                 id="x", executor="shell",
-                command="echo ok",
+                prompt="echo ok",
                 postcondition={"shell": "true"},
             )],
             modules=[
@@ -94,7 +94,7 @@ class TestGracefulShutdown:
             concurrency=1,
             pipeline=[PipelineStep(
                 id="x", executor="shell",
-                command="echo ok",
+                prompt="echo ok",
                 postcondition={"shell": "true"},
             )],
             modules=[
@@ -125,7 +125,7 @@ class TestGracefulShutdown:
             concurrency=1,
             pipeline=[PipelineStep(
                 id="x", executor="shell",
-                command="echo ok",
+                prompt="echo ok",
                 postcondition={"shell": "true"},
             )],
             modules=[
