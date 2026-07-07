@@ -610,10 +610,18 @@ def _cmd_status(args) -> int:
     else:
         if not base.exists():
             print("No runs found.")
+            print("\n  💡 Getting started:")
+            print("     1. cc-pipeline init          — Generate a config interactively")
+            print("     2. cc-pipeline run config.yaml --dry-run   — Preview your pipeline")
+            print("     3. cc-pipeline run config.yaml             — Execute")
             return 0
         runs = sorted(base.iterdir())
         if not runs:
             print("No runs found.")
+            print("\n  💡 Getting started:")
+            print("     1. cc-pipeline init          — Generate a config interactively")
+            print("     2. cc-pipeline run config.yaml --dry-run   — Preview your pipeline")
+            print("     3. cc-pipeline run config.yaml             — Execute")
             return 0
         print("Recent runs:")
         for r in runs[-10:]:
