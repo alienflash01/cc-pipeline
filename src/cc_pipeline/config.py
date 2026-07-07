@@ -62,6 +62,7 @@ class PipelineConfig:
     model: str = ""  # global default model (empty = CC decides)
     worktree_root: str = ""  # where to create worktrees (empty = framework decides)
     prompt_prefix: str = ""  # shared context prepended to every step's prompt
+    snippets: dict = field(default_factory=dict)  # named text blocks, referenced via {{snippet:name}}
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
 
@@ -330,6 +331,7 @@ def load_config(path: str) -> PipelineConfig:
         model=raw.get("model", ""),
         worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
         prompt_prefix=raw.get("prompt_prefix", ""),
+        snippets=raw.get("snippets", {}),
         pipeline=pipeline,
         modules=modules,
     )

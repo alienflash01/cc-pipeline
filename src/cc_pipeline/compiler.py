@@ -194,6 +194,16 @@ class PipelineCompiler:
         prefix = getattr(self.config, "prompt_prefix", "")
         if prefix:
             text = prefix.rstrip() + "\n\n" + text
+
+        # Expand {{snippet:name}} references
+        snippets = getattr(self.config, "snippets", {})
+        if snippets:
+            import re as _re
+            def _replace_snippet(m):
+                name = m.group(1)
+                return snippets.get(name, m.group(0))
+            text = _re.sub(r"\{\{snippet:(\w+)\}\}", _replace_snippet, text)
+
         return text
 
     def _render_postcondition(self, step: PipelineStep, variables: dict) -> dict | None:
