@@ -61,6 +61,7 @@ class PipelineConfig:
     output_branch_prefix: str = "cc-auto"
     model: str = ""  # global default model (empty = CC decides)
     worktree_root: str = ""  # where to create worktrees (empty = framework decides)
+    prompt_prefix: str = ""  # shared context prepended to every step's prompt
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
 
@@ -100,6 +101,18 @@ def load_config(path: str) -> PipelineConfig:
     # Required: repo
     if "repo" not in raw or not raw["repo"]:
         raise ValueError("Missing required field: repo")
+
+    # Auto-detect base_branch if not specified
+    if not raw.get("base_branch"):
+        import subprocess as _sp
+        try:
+            _r = _sp.run(
+                ["git", "-C", raw["repo"], "symbolic-ref", "--short", "HEAD"],
+                capture_output=True, text=True, timeout=5,
+            )
+            raw["base_branch"] = _r.stdout.strip() if _r.returncode == 0 else "main"
+        except Exception:
+            raw["base_branch"] = "main"
     
     # Required: modules (non-empty)
     if "modules" not in raw or not raw["modules"]:
@@ -316,6 +329,7 @@ def load_config(path: str) -> PipelineConfig:
         output_branch_prefix=raw.get("output_branch_prefix", "cc-auto"),
         model=raw.get("model", ""),
         worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
+        prompt_prefix=raw.get("prompt_prefix", ""),
         pipeline=pipeline,
         modules=modules,
     )

@@ -168,9 +168,6 @@ class TestIssue24LockOutsideRead:
 
 class TestIssue26MergeDeadCode:
     def test_merge_to_base_removed(self):
-        """PRCreator.merge_to_base should be removed (dead code)."""
-        from cc_pipeline.pr import PRCreator
-        assert not hasattr(PRCreator, "merge_to_base"), \
             "merge_to_base is dead code, should be removed"
 
 

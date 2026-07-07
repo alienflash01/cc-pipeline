@@ -112,6 +112,11 @@ def _build_parser() -> argparse.ArgumentParser:
     transcript_parser.add_argument("--run-dir", required=True, help="Run directory")
     transcript_parser.add_argument("--module", default=None, help="Module name (default: all modules)")
 
+    # clean subcommand — remove worktrees and branches
+    clean_parser = subparsers.add_parser("clean", help="Remove cc-pipeline worktrees and branches")
+    clean_parser.add_argument("--repo", default=None, help="Git repo path (default: from cwd)")
+    clean_parser.add_argument("--all", action="store_true", default=False, help="Clean ALL cc-auto worktrees/branches")
+
     # init subcommand — interactive config generator
     init_parser = subparsers.add_parser("init", help="Generate a starter config interactively")
     init_parser.add_argument("--template", default=None, help="Config template (not yet supported)")
@@ -149,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_uninstall(args)
     if args.command == "transcript":
         return _cmd_transcript(args)
+    if args.command == "clean":
+        return _cmd_clean(args)
     if args.command == "init":
         return _cmd_init(args)
     if args.command == "check":
@@ -1395,6 +1402,64 @@ def _cmd_check(args) -> int:
 
     print()
     print(f"  Summary: {passed}/{total} checks passed")
+    return 0
+
+
+def _cmd_clean(args) -> int:
+    """Remove cc-pipeline worktrees and branches."""
+    repo = args.repo or os.getcwd()
+
+    if not Path(repo, ".git").exists():
+        print(f"Error: {repo} is not a git repository", file=sys.stderr)
+        return 1
+
+    # Find all cc-auto worktrees
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    wt_count = 0
+    for line in result.stdout.splitlines():
+        if line.startswith("worktree "):
+            wt_path = line.split(" ", 1)[1]
+            if "cc-auto" in wt_path or "/wt/" in wt_path or "/worktrees/" in wt_path:
+                subprocess.run(["git", "worktree", "remove", "--force", wt_path], cwd=repo, capture_output=True)
+                print(f"  🗑️  worktree: {wt_path}")
+                wt_count += 1
+
+    # Prune
+    subprocess.run(["git", "worktree", "prune"], cwd=repo, capture_output=True)
+
+    # Find and delete cc-auto branches
+    result = subprocess.run(
+        ["git", "branch", "--list", "cc-auto-*"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    br_count = 0
+    for line in result.stdout.splitlines():
+        branch = line.strip().lstrip("* ").strip()
+        if branch:
+            subprocess.run(["git", "branch", "-D", branch], cwd=repo, capture_output=True)
+            print(f"  🗑️  branch: {branch}")
+            br_count += 1
+
+    # Clean up checkpoint tags
+    tag_result = subprocess.run(
+        ["git", "tag", "-l", "pipeline/*"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    tag_count = 0
+    for line in tag_result.stdout.splitlines():
+        tag = line.strip()
+        if tag:
+            subprocess.run(["git", "tag", "-d", tag], cwd=repo, capture_output=True)
+            tag_count += 1
+
+    total = wt_count + br_count + tag_count
+    if total == 0:
+        print("  ✅ Nothing to clean.")
+    else:
+        print(f"\n  ✅ Cleaned: {wt_count} worktrees, {br_count} branches, {tag_count} tags.")
     return 0
 
 

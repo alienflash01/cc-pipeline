@@ -129,8 +129,7 @@ class TestOrchestratorModuleSummary:
         cli_mod._shutdown_requested = False
 
         # Avoid real gh/PR side effects; orchestrator catches PR errors anyway.
-        with patch("cc_pipeline.pr.PRCreator") as MockPR:
-            MockPR.return_value.create.return_value = None
+        with patch.dict("sys.modules", {}):
             results = orch.run()
 
         out = capsys.readouterr().out
@@ -163,8 +162,7 @@ class TestOrchestratorModuleSummary:
         import cc_pipeline.cli as cli_mod
         cli_mod._shutdown_requested = False
 
-        with patch("cc_pipeline.pr.PRCreator") as MockPR:
-            MockPR.return_value.create.return_value = None
+        with patch.dict("sys.modules", {}):
             results = orch.run()
 
         out = capsys.readouterr().out

@@ -175,23 +175,26 @@ class PipelineCompiler:
     def _resolve_prompt(self, step: PipelineStep) -> str:
         """Return the effective prompt for a step.
 
-        All executors (shell, claude-code, judge) read from the same place:
-          1. step.prompt if set.
-          2. Otherwise step.prompt_file (loaded from disk).
+        Prepends config.prompt_prefix if set.
         """
         if step.prompt:
-            return step.prompt
-
-        if step.prompt_file:
+            text = step.prompt
+        elif step.prompt_file:
             path = Path(step.prompt_file)
             if not path.is_absolute():
-                # Try CWD first, then config file directory
                 if not path.exists() and self.config_dir:
                     path = self.config_dir / step.prompt_file
             if not path.exists():
                 raise FileNotFoundError(f"prompt_file not found: {step.prompt_file}")
-            return path.read_text()
-        return ""
+            text = path.read_text()
+        else:
+            text = ""
+
+        # Prepend shared prompt_prefix
+        prefix = getattr(self.config, "prompt_prefix", "")
+        if prefix:
+            text = prefix.rstrip() + "\n\n" + text
+        return text
 
     def _render_postcondition(self, step: PipelineStep, variables: dict) -> dict | None:
         """Render variables inside postcondition shell command."""
