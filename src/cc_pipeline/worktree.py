@@ -65,16 +65,18 @@ class WorktreeManager:
                 cwd=self.repo_path, capture_output=True, text=True,
             )
             for line in list_result.stdout.splitlines():
-                if line.startswith("worktree ") and branch in line:
+                if line.startswith("worktree "):
                     stale_path = line.split(" ", 1)[1]
-                    subprocess.run(
-                        ["git", "worktree", "remove", "--force", stale_path],
-                        cwd=self.repo_path, capture_output=True,
-                    )
-                    subprocess.run(
-                        ["git", "worktree", "prune"],
-                        cwd=self.repo_path, capture_output=True,
-                    )
+                    # Exact match: path ends with module name (avoid auth matching auth-v2)
+                    if stale_path.rstrip("/").endswith("/" + module_name):
+                        subprocess.run(
+                            ["git", "worktree", "remove", "--force", stale_path],
+                            cwd=self.repo_path, capture_output=True,
+                        )
+                        subprocess.run(
+                            ["git", "worktree", "prune"],
+                            cwd=self.repo_path, capture_output=True,
+                        )
 
             # Delete old branch if exists
             subprocess.run(

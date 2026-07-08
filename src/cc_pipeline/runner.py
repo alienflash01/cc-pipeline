@@ -128,7 +128,7 @@ class ModuleRunner:
         completed = 0
 
         step_idx = 0
-        jump_count = 0
+        jump_counts = {}  # per target step: {target_step_id: count}
 
         while step_idx < len(self.steps):
             step = self.steps[step_idx]
@@ -268,26 +268,29 @@ class ModuleRunner:
             # After inner while: check passed/on_failure
 
             if not passed:
-                # Check on_failure jump-back
-                if step.on_failure and jump_count < getattr(step, "on_failure_max_jumps", MAX_ON_FAILURE_JUMPS):
+                # Check on_failure jump-back (per-target jump count)
+                target = step.on_failure
+                max_jumps = getattr(step, "on_failure_max_jumps", MAX_ON_FAILURE_JUMPS)
+                jc = jump_counts.get(target, 0)
+                if target and jc < max_jumps:
                     # Find target step index
                     target_idx = None
                     for j, s in enumerate(self.steps):
-                        if s.step_id == step.on_failure:
+                        if s.step_id == target:
                             target_idx = j
                             break
                     if target_idx is not None:
-                        jump_count += 1
+                        jump_counts[target] = jc + 1
                         self.logger.event(
                             "on_failure_jump",
                             step=step.step_id, attempt=0,
-                            info={"from": step.step_id, "to": step.on_failure,
-                                  "jump": jump_count},
+                            info={"from": step.step_id, "to": target,
+                                  "jump": jump_counts[target]},
                         )
                         step_idx = target_idx
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id} → {step.on_failure} (jump {jump_count})")
+                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target]})")
                         continue
                 return {
                     "status": "failed",

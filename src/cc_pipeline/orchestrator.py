@@ -50,6 +50,7 @@ class Orchestrator:
         )
         self.compiler = PipelineCompiler(config, config_dir=str(Path(config_path).parent) if config_path else None)
         self.cc_model = cc_model
+        self._merge_lock = __import__("threading").Lock()
 
         # Shutdown flag (self-contained, no cli import)
         self._shutdown_requested = False
@@ -298,6 +299,8 @@ class Orchestrator:
     def _merge_branch(self, module_name: str, branch: str) -> bool:
         """Merge module worktree branch back to base_branch.
 
+        Thread-safe: serialized via _merge_lock to prevent concurrent git operations.
+
         Returns:
             True if merge succeeded.
             False if merge had conflicts (worktree preserved for manual fix).
@@ -307,19 +310,20 @@ class Orchestrator:
         import subprocess as _sp
         repo = str(self.worktree_mgr.repo_path)
 
-        # Checkout base_branch
-        _sp.run(["git", "checkout", self.config.base_branch],
-                cwd=repo, capture_output=True, check=True)
+        with self._merge_lock:
+            # Checkout base_branch
+            _sp.run(["git", "checkout", self.config.base_branch],
+                    cwd=repo, capture_output=True, check=True)
 
-        # Merge with conflict detection (check=False)
-        result = _sp.run(
-            ["git", "merge", "--no-edit", branch],
-            cwd=repo, capture_output=True, text=True,
-        )
+            # Merge with conflict detection (check=False)
+            result = _sp.run(
+                ["git", "merge", "--no-edit", branch],
+                cwd=repo, capture_output=True, text=True,
+            )
 
-        if result.returncode != 0:
-            # Merge conflict — abort merge to leave repo clean
-            _sp.run(["git", "merge", "--abort"], cwd=repo, capture_output=True)
-            return False
+            if result.returncode != 0:
+                # Merge conflict — abort merge to leave repo clean
+                _sp.run(["git", "merge", "--abort"], cwd=repo, capture_output=True)
+                return False
 
-        return True
+            return True

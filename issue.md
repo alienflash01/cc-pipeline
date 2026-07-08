@@ -260,3 +260,136 @@
 | **合计** | | **123** |
 
 > 注：上表中测试数为各脚本中的测试函数数量，部分测试函数包含多个断言。实际执行的部分测试为"确认行为符合预期"（非 bug），最终确认的独立 bug 为 11 个。
+
+---
+
+# Round 6 Audit: 全仓代码检视
+
+**审查范围**: 全部 15 个源文件（4179 行源码），逐文件通读 + 静态安全扫描 + 并发安全分析
+**审查时间**: 2026-07-08
+
+---
+
+## Bug 详情
+
+### Bug #12
+- **严重度**: P0
+- **模块**: `src/cc_pipeline/orchestrator.py` — `_merge_branch()` (L298-325)
+- **描述**: 多个 module 线程并发成功后，同时在**同一个主仓库**上执行 `git checkout` + `git merge`，没有任何锁保护。git index lock 会被并发抢占，导致 `git checkout` 互相踩踏、`git merge` 报 `index.lock exists`，最坏情况仓库状态损坏。
+- **复现**:
+  ```
+  concurrency=3, modules=[A, B, C] 同时成功
+  → 3 个线程同时执行 git checkout main（同一个 repo cwd）
+  → thread A checkout 到 main, thread B 此时 checkout 打断 A 的状态
+  → merge 冲突或 index.lock 报错
+  ```
+- **影响**: 并行模式下多个模块同时成功时，merge 互相干扰，可能导致仓库状态不一致或 merge 静默失败。当前 worktree 操作有 `_lock` 保护，但 merge 遗漏了。
+- **修复**: merge 操作需用 `self.worktree_mgr._lock`（或新建专用 `_merge_lock`）串行化。
+
+### Bug #13
+- **严重度**: P0
+- **模块**: `src/cc_pipeline/runner.py` — `run()` (L131-291)
+- **描述**: `on_failure` 的 `jump_count` 是方法级变量，在所有 step 间共享累加。step A 失败用掉 2 次 jump 后，step B 即使配置了独立的 `on_failure_max_jumps=2` 也永远无法 jump（`jump_count=2 < 2` 为 False）。
+- **复现**:
+  ```yaml
+  pipeline:
+    - id: stepA
+      executor: shell
+      prompt: "false"
+      on_failure: stepA_retry
+      on_failure_max_jumps: 2
+    - id: stepA_retry
+      executor: shell
+      prompt: "false"
+    - id: stepB
+      executor: shell
+      prompt: "false"
+      on_failure: stepB_retry
+      on_failure_max_jumps: 2  # 永远无法触发，jump_count 已被 A 用完
+    - id: stepB_retry
+      executor: shell
+      prompt: "true"
+  ```
+- **影响**: 多步 pipeline 中 `on_failure` 机制在后续步骤上静默失效。字段 `on_failure_max_jumps` 的 per-step 语义被破坏。
+- **修复**: `jump_count` 应 per target-step 或 per source-step 跟踪（dict），而非全局累加。
+
+### Bug #14
+- **严重度**: P1
+- **模块**: `src/cc_pipeline/cli.py` — `_kill_cc_subprocesses()` (L33-36)
+- **描述**: `pkill -f "claude.*-p"` 匹配**机器上所有**匹配该 pattern 的进程，会杀掉其他 cc-pipeline 实例或其他用户启动的 CC 进程。在多用户服务器或并行运行场景下是危险的。
+- **影响**: 误杀无关进程，可能导致其他用户的 pipeline 被中断。
+- **修复**: 用 `os.killpg(os.getpgid(pid))` 追踪自身子进程的 PGID 精确 kill（CCExecutor 已用 `start_new_session=True`，每个 CC 子进程有独立 PGID，需在 executor 中记录 PGID 列表）。
+
+### Bug #15
+- **严重度**: P1
+- **模块**: `src/cc_pipeline/cli.py` — daemon 模式 (L435-438)
+- **描述**: daemon 模式中 `sys.stdout = open(log_file, "a")` 打开的文件句柄从未关闭，也未 flush。原 stdout/stderr 的 fd 直接被覆盖丢弃，无 `atexit` 或 `finally` 管理。进程退出时缓冲区可能未写入磁盘。
+- **修复**: 先 `sys.stdout.flush()` + `sys.stderr.flush()`，替换后注册 `atexit` 关闭新 fd。
+
+### Bug #16
+- **严重度**: P1
+- **模块**: `src/cc_pipeline/orchestrator.py` — `__init__()` (L58-60) + `shutdown_requested` (L96-98)
+- **描述**: Orchestrator 反向 import `cc_pipeline.cli` 模块的全局变量 `_shutdown_requested`，形成 Orchestrator→CLI 的循环依赖。注释中已承认 "Reset legacy global flag to avoid test pollution"——说明已经造成过问题。
+- **影响**: 测试隔离困难（全局变量被上次测试污染），架构层耦合（orchestrator 不该知道 CLI 层的存在）。
+- **修复**: shutdown 信号通过 Orchestrator 自己的实例属性或注入的 `threading.Event` 传递，删除对 `cli_mod._shutdown_requested` 的所有引用。
+
+### Bug #17
+- **严重度**: P1
+- **模块**: `src/cc_pipeline/executor.py` — `ShellExecutor.run()` (L105-112)
+- **描述**: Shell executor 的 `shell=True` 直接执行 `render()` 渲染后的字符串。`{module}`、`{source_dir}`、`{variables.*}` 等变量被注入 shell 命令中。如果这些值包含 shell 元字符（`$()`、`; `、`` ` `` 等），就会执行任意命令。虽然 config 层校验了模块名和 source_files 的路径遍历，但 `variables` 和 `source_dir` 的值没有做 shell 安全过滤。
+- **影响**: config.yaml 是可信输入时风险有限，但 variables 值如果来自外部（如自动生成），可被用作 shell 注入向量。
+- **修复**: 在文档中明确标注 config.yaml 是可信输入、variables 不可来自不可信来源。或对 shell executor 的变量值做 shell-escape。
+
+### Bug #18
+- **严重度**: P2
+- **模块**: `src/cc_pipeline/worktree.py` — `create()` (L68)
+- **描述**: `if branch in line` 是子串匹配，当 module 名是另一个 module 名的子串时（如 `auth` 和 `auth-v2`），会误删 `auth-v2` 的 worktree。
+- **复现**:
+  ```python
+  # module "auth" 创建 worktree 时：
+  # line = "worktree /tmp/cc-auto/auth-v2"
+  # branch = "cc-auto/auth"
+  # "cc-auto/auth" in "/tmp/cc-auto/auth-v2" → True → 误删 auth-v2 的 worktree
+  ```
+- **修复**: 改为精确路径比较：`if line.endswith("/" + module_name) or line == worktree + module_name`。
+
+### Bug #19
+- **严重度**: P2
+- **模块**: `src/cc_pipeline/report_html.py` — `build_html_report()` (L248)
+- **描述**: 时间戳用 `datetime.now()` 获取本地时间，但标注为 "UTC"：`datetime.now().strftime("%Y-%m-%d %H:%M:%S UTC")`。实际不是 UTC 时间，误导用户。
+- **修复**: 改为 `datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")`，或去掉 "UTC" 标注。
+
+### Bug #20
+- **严重度**: P2
+- **模块**: `src/cc_pipeline/state.py` — `StateManager` (多进程安全)
+- **描述**: `StateManager` 的 `threading.Lock` 只保护同进程多线程。如果两个 cc-pipeline 进程（非线程）同时操作同一个 `run_dir`（如一个 `run` + 一个 `status`），read-modify-write 竡态仍会发生。`update_module` 的读-改-写操作不是跨进程原子的。
+- **影响**: resume 场景中如果有残留进程和新进程同时写入状态文件，数据可能丢失。
+- **修复**: 使用 `fcntl.flock` 或 `filelock` 库做跨进程文件锁。
+
+---
+
+## 建议修复优先级
+
+### P0 — 必须修复（功能正确性）
+
+| # | Bug | 修复建议 |
+|---|-----|---------|
+| 12 | merge 并发竞态 | `_merge_branch` 用 `threading.Lock` 串行化 |
+| 13 | jump_count 全局累加 | 改为 per-step dict 跟踪 |
+
+### P1 — 重要问题（安全/架构）
+
+| # | Bug | 修复建议 |
+|---|-----|---------|
+| 14 | pkill 过于激进 | 用 PGID 精确追踪子进程 |
+| 15 | daemon fd 泄漏 | flush + atexit 关闭 |
+| 16 | Orchestrator→CLI 循环依赖 | 用 Event 或实例属性替代全局变量 |
+| 17 | shell executor 注入风险 | 文档标注或 shell-escape |
+
+### P2 — 应改进
+
+| # | Bug | 修复建议 |
+|---|-----|---------|
+| 18 | worktree 子串误匹配 | 改为精确路径匹配 |
+| 19 | 报告 UTC 时间戳错误 | 用 `timezone.utc` 或去掉标注 |
+| 20 | StateManager 非跨进程安全 | 加 `fcntl.flock` |

@@ -434,8 +434,14 @@ def _cmd_run(args) -> int:
         log_file = run_dir / "daemon.log"
         with open(log_file, "a") as f:
             f.write(f"\n=== Daemon started at {now} ===\n")
-        sys.stdout = open(log_file, "a")
-        sys.stderr = sys.stdout
+        # Flush old buffers before replacing
+        sys.stdout.flush()
+        sys.stderr.flush()
+        new_stdout = open(log_file, "a", buffering=1)  # line-buffered
+        sys.stdout = new_stdout
+        sys.stderr = new_stdout
+        import atexit
+        atexit.register(lambda: new_stdout.close())
 
     # Install signal handler for graceful shutdown
     signal.signal(signal.SIGTERM, _signal_handler)
