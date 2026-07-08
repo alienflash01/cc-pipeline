@@ -400,11 +400,14 @@ def _cmd_run(args) -> int:
     # Preflight: warn on environment issues (missing CC CLI, bad repo/branch, ...)
     _preflight_check(config, args)
 
-    # Filter to single module if specified (before dry-run so it's respected)
+    # Filter to specified modules if provided (comma-separated, before dry-run)
     if args.module:
-        config.modules = [m for m in config.modules if m.name == args.module]
-        if not config.modules:
-            print(f"Module '{args.module}' not found in config", file=sys.stderr)
+        wanted = {m.strip() for m in args.module.split(",")}
+        config.modules = [m for m in config.modules if m.name in wanted]
+        missing = wanted - {m.name for m in config.modules}
+        if missing:
+            print(f"Module(s) not found in config: {', '.join(sorted(missing))}", file=sys.stderr)
+            print(f"Available: {', '.join(m.name for m in config.modules)}", file=sys.stderr)
             return 1
 
     # Dry-run: preview only — no run_dir, no worktree, no CC calls
