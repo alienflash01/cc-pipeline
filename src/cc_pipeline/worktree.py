@@ -86,10 +86,17 @@ class WorktreeManager:
 
             # Create worktree with a new branch from ref or base
             ref = from_ref or self.base_branch
-            subprocess.run(
+            wt_result = subprocess.run(
                 ["git", "worktree", "add", "-b", branch, str(wt_path), ref],
-                cwd=self.repo_path, capture_output=True, check=True,
+                cwd=self.repo_path, capture_output=True, text=True,
             )
+            if wt_result.returncode != 0:
+                stderr_msg = wt_result.stderr.strip()
+                raise RuntimeError(
+                    f"git worktree add failed (exit {wt_result.returncode}) for module '{module_name}':\n"
+                    f"  command: git worktree add -b {branch} {wt_path} {ref}\n"
+                    f"  stderr: {stderr_msg}"
+                )
 
         self._worktrees[module_name] = str(wt_path)
         return str(wt_path)
