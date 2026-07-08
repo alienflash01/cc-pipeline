@@ -410,11 +410,10 @@ class ModuleRunner:
                     if stdout_tail:
                         detail_parts.append("stdout: " + " | ".join(stdout_tail))
                     reason = " — ".join(detail_parts)
-                    # Verbose: print shell output
-                    if self.verbose >= 1:
-                        ts = datetime.now().strftime("%H:%M:%S")
-                        for line in (result.stderr or "").strip().splitlines()[-5:]:
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ {line}")
+                    # Always print shell error to terminal (not just verbose)
+                    print(f"  ❌ Shell failed (exit {result.returncode}): {step.rendered_prompt[:80]}")
+                    for line in stderr_tail:
+                        print(f"     │ {line}")
                     return ExecResult(ExecOutcome.CC_FAILED, result, reason)
                 return ExecResult(ExecOutcome.SUCCESS, result)
             except subprocess.TimeoutExpired:
