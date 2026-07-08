@@ -209,6 +209,9 @@ cc-pipeline run modules.yaml
 | `worktree_root` | string | `""` | worktree 根目录（相对路径相对于 `repo`，绝对路径原样使用） |
 | `prompt_prefix` | string | `""` | 全局公共上下文（自动拼接到每个 step 的 prompt 开头） |
 | `snippets` | dict | `{}` | 命名文本块，通过 `{{snippet:name}}` 在 prompt 任意位置引用 |
+| `commit_message` | string | `""` | squash merge 的 commit message 模板（支持 `{module}` 变量） |
+| `auto_merge` | bool | `false` | 模块成功后是否自动 squash merge 到 base_branch |
+| `auto_resolve_conflicts` | bool | `false` | merge 冲突时是否用 CC 自动解决（需 `auto_merge: true`） |
 
 > **变更**：`output_branch_prefix` 默认值已从 `ut-auto` 改为 `cc-auto`（cc-pipeline 是通用框架，不再特指 UT）。
 > **变更**：`pr_labels` / `pr_title_template` 已删除（PR 功能移除，改为自动 merge worktree 分支到 base_branch）。

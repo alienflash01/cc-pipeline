@@ -23,6 +23,7 @@ def _simple_config(repo, **kw):
     return PipelineConfig(
         repo=str(repo),
         concurrency=1,
+        auto_merge=kw.pop("auto_merge", True),  # default True for merge tests
         pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
         modules=[Module(name="auth", source_dir="src/", source_files=["a.c"])],
         **kw,
@@ -67,7 +68,7 @@ class TestMergeConflictPrints:
         wt_root = tmp_path / "wt"
         config = PipelineConfig(
             repo=str(repo), concurrency=1,
-            worktree_root=str(wt_root),
+            worktree_root=str(wt_root), auto_merge=True,
             pipeline=[PipelineStep(id="x", executor="shell", prompt="echo ok")],
             modules=[Module(name="auth", source_dir="src/", source_files=["a.c"])],
         )

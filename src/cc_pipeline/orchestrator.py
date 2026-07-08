@@ -252,7 +252,7 @@ class Orchestrator:
 
             # On success: merge to base_branch + cleanup
             if result["status"] == "passed":
-                if getattr(self.config, "auto_merge", True):
+                if getattr(self.config, "auto_merge", False):
                     merge_ok = False
                     try:
                         merge_ok = self._merge_branch(module_name, branch)
