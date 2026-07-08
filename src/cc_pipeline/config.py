@@ -65,6 +65,7 @@ class PipelineConfig:
     snippets: dict = field(default_factory=dict)  # named text blocks, referenced via {{snippet:name}}
     commit_message: str = ""  # squash merge commit message template (default: auto-generated)
     auto_resolve_conflicts: bool = False  # use CC to auto-resolve merge conflicts
+    auto_merge: bool = True  # auto squash-merge to base_branch after success (false = leave in worktree)
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
 
@@ -340,6 +341,7 @@ def load_config(path: str) -> PipelineConfig:
         snippets=raw.get("snippets", {}),
         commit_message=raw.get("commit_message", ""),
         auto_resolve_conflicts=raw.get("auto_resolve_conflicts", False),
+        auto_merge=raw.get("auto_merge", True),
         pipeline=pipeline,
         modules=modules,
     )

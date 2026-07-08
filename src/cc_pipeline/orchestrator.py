@@ -252,23 +252,32 @@ class Orchestrator:
 
             # On success: merge to base_branch + cleanup
             if result["status"] == "passed":
-                merge_ok = False
-                try:
-                    merge_ok = self._merge_branch(module_name, branch)
-                except Exception as e:
-                    logger.event("merge_error", error=str(e))
-                    print(f"  ⚠️  Merge failed: {e}")
-                if merge_ok:
-                    self.worktree_mgr.cleanup(module_name)
-                    logger.event("merge_success", step="merge", module=module_name)
-                    print(f"  🔀 Merged {branch} → {self.config.base_branch}")
+                if getattr(self.config, "auto_merge", True):
+                    merge_ok = False
+                    try:
+                        merge_ok = self._merge_branch(module_name, branch)
+                    except Exception as e:
+                        logger.event("merge_error", error=str(e))
+                        print(f"  ⚠️  Merge failed: {e}")
+                    if merge_ok:
+                        self.worktree_mgr.cleanup(module_name)
+                        logger.event("merge_success", step="merge", module=module_name)
+                        print(f"  🔀 Merged {branch} → {self.config.base_branch}")
+                    else:
+                        # Merge failed or conflict — preserve worktree for manual fix
+                        self.worktree_mgr.preserve(module_name)
+                        logger.event("merge_skipped", step="merge", module=module_name,
+                                     info="worktree preserved for manual merge")
+                        print(f"  ⚠️  Merge conflict — worktree preserved")
+                        print(f"     Manual merge: git checkout {self.config.base_branch} && git merge {branch}")
                 else:
-                    # Merge failed or conflict — preserve worktree for manual fix
+                    # auto_merge disabled — keep worktree for user to merge manually
                     self.worktree_mgr.preserve(module_name)
                     logger.event("merge_skipped", step="merge", module=module_name,
-                                 info="worktree preserved for manual merge")
-                    print(f"  ⚠️  Merge conflict — worktree preserved at {self.worktree_mgr._worktrees.get(module_name, '?')}")
-                    print(f"     Manual merge: git checkout {self.config.base_branch} && git merge {branch}")
+                                 info="auto_merge disabled, worktree preserved")
+                    print(f"  📁 Worktree preserved at {self.worktree_mgr._worktrees.get(module_name, '?')}")
+                    print(f"     Branch: {branch}")
+                    print(f"     Manual merge: git checkout {self.config.base_branch} && git merge --squash {branch}")
             else:
                 self.worktree_mgr.preserve(module_name)
 
