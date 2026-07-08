@@ -323,8 +323,13 @@ class Orchestrator:
 
         with self._merge_lock:
             # Checkout base_branch
-            _sp.run(["git", "checkout", self.config.base_branch],
-                    cwd=repo, capture_output=True, check=True)
+            co_result = _sp.run(["git", "checkout", self.config.base_branch],
+                    cwd=repo, capture_output=True, text=True)
+            if co_result.returncode != 0:
+                raise RuntimeError(
+                    f"git checkout {self.config.base_branch} failed (exit {co_result.returncode}):\n"
+                    f"  stderr: {co_result.stderr.strip()}"
+                )
 
             # Squash merge (stages all changes without commit)
             result = _sp.run(

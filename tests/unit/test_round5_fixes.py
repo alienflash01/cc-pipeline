@@ -43,8 +43,8 @@ class TestBug3GitRollbackCheckTrue:
 
         from cc_pipeline.git_checkpoint import GitCheckpoint
         gc = GitCheckpoint(str(repo))
-        # rollback to nonexistent tag should raise (not silently pass)
-        with pytest.raises(subprocess.CalledProcessError):
+        # rollback to nonexistent tag should raise RuntimeError with stderr (not silently pass)
+        with pytest.raises(RuntimeError, match="failed"):
             gc.rollback(step="nonexistent", module="mod1", attempt=99)
 
 

@@ -13,14 +13,21 @@ class GitCheckpoint:
         self._git_env = None  # Use default env
 
     def _run_git(self, args: list[str], **kwargs) -> subprocess.CompletedProcess:
-        """Run a git command in the repo."""
-        return subprocess.run(
+        """Run a git command in the repo. Raises RuntimeError with stderr on failure (when check=True)."""
+        check = kwargs.pop("check", False)
+        result = subprocess.run(
             ["git"] + args,
             cwd=str(self.repo_path),
             capture_output=True,
             text=True,
             **kwargs,
         )
+        if check and result.returncode != 0:
+            raise RuntimeError(
+                f"git {' '.join(args)} failed (exit {result.returncode}):\n"
+                f"  stderr: {result.stderr.strip()}"
+            )
+        return result
 
     def checkpoint(
         self,
