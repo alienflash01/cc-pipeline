@@ -63,6 +63,8 @@ class PipelineConfig:
     worktree_root: str = ""  # where to create worktrees (empty = framework decides)
     prompt_prefix: str = ""  # shared context prepended to every step's prompt
     snippets: dict = field(default_factory=dict)  # named text blocks, referenced via {{snippet:name}}
+    commit_message: str = ""  # squash merge commit message template (default: auto-generated)
+    auto_resolve_conflicts: bool = False  # use CC to auto-resolve merge conflicts
     pipeline: list[PipelineStep] = field(default_factory=list)
     modules: list[Module] = field(default_factory=list)
 
@@ -336,6 +338,8 @@ def load_config(path: str) -> PipelineConfig:
         worktree_root=_resolve_worktree_root(raw.get("worktree_root", ""), raw["repo"]),
         prompt_prefix=raw.get("prompt_prefix", ""),
         snippets=raw.get("snippets", {}),
+        commit_message=raw.get("commit_message", ""),
+        auto_resolve_conflicts=raw.get("auto_resolve_conflicts", False),
         pipeline=pipeline,
         modules=modules,
     )
