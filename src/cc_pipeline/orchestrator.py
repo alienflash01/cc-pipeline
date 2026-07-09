@@ -186,6 +186,8 @@ class Orchestrator:
                 from cc_pipeline.state import StateManager
                 sm = StateManager(run_dir=str(self.run_dir))
                 skip_steps = sm.get_completed_steps(module_name)
+                if skip_steps:
+                    print(f"  ⏭️  Resume: skipping {len(skip_steps)} completed step(s) for '{module_name}': {sorted(skip_steps)}")
 
             wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref)
 
