@@ -217,7 +217,13 @@ class Orchestrator:
 
             # Filter out completed steps in resume mode
             if skip_steps:
-                all_steps = [s for s in all_steps if s.step_id not in skip_steps]
+                # skip_steps keys are "step_id" or "step_id/loop_file"
+                # For non-loop steps: match step_id
+                # For loop steps: match step_id + loop_file
+                def _is_completed(s):
+                    key = f"{s.step_id}/{s.loop_file}" if s.loop_file else s.step_id
+                    return key in skip_steps or s.step_id in skip_steps and not s.loop_file
+                all_steps = [s for s in all_steps if not _is_completed(s)]
                 logger.log_pass(step="resume_skip", attempt=0,
                                 info={"steps": sorted(skip_steps), "from_ref": from_ref})
 
