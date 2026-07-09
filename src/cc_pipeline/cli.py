@@ -426,6 +426,9 @@ def _cmd_run(args) -> int:
             # Parent: write PID file, print message, exit
             pid_file = run_dir / "cc-pipeline.pid"
             pid_file.write_text(str(pid))
+            # Cleanup stale PID file on process exit
+            import atexit as _atexit
+            _atexit.register(lambda: pid_file.unlink(missing_ok=True))
             print(f"Daemon started. PID: {pid}")
             print(f"PID file: {pid_file}")
             print(f"Monitor: cc-pipeline status --run-dir {run_dir}")
@@ -1457,7 +1460,10 @@ def _cmd_clean(args) -> int:
         if line.startswith("worktree "):
             wt_path = line.split(" ", 1)[1]
             if "cc-auto" in wt_path or "/wt/" in wt_path or "/worktrees/" in wt_path:
+                # Remove cleanly: git worktree remove first, then shutil.rmtree for residue
                 subprocess.run(["git", "worktree", "remove", "--force", wt_path], cwd=repo, capture_output=True)
+                import shutil as _shutil
+                _shutil.rmtree(wt_path, ignore_errors=True)
                 print(f"  🗑️  worktree: {wt_path}")
                 wt_count += 1
 
