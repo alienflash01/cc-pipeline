@@ -41,22 +41,17 @@ class WorktreeManager:
         wt_path = self.worktree_root / module_name
 
         with self._lock:
-            # Prune stale worktree references first
+            # Remove any residue from previous failed attempts
+            # Use shutil.rmtree instead of git worktree remove — handles partial/non-worktree dirs
+            if wt_path.exists():
+                import shutil
+                shutil.rmtree(str(wt_path), ignore_errors=True)
+
+            # Prune stale worktree references
             subprocess.run(
                 ["git", "worktree", "prune"],
                 cwd=self.repo_path, capture_output=True,
             )
-
-            # Remove if worktree directory exists (in our run_dir)
-            if wt_path.exists():
-                subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(wt_path)],
-                    cwd=self.repo_path, capture_output=True,
-                )
-                subprocess.run(
-                    ["git", "worktree", "prune"],
-                    cwd=self.repo_path, capture_output=True,
-                )
 
             # Find and remove ANY stale worktree still holding this branch
             # (from previous failed runs in different run_dirs)
