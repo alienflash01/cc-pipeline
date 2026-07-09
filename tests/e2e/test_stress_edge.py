@@ -665,30 +665,3 @@ class TestEdgeConfigErrors:
         with pytest.raises(ValueError, match="(?i)duplicate"):
             compiler.compile_module("x")
 
-
-# ═══════════════════════════════════════════════════════════════
-# Stress: Git checkpoint with many tags
-# ═══════════════════════════════════════════════════════════════
-
-class TestStressManyCheckpoints:
-    """Create many checkpoints and verify all accessible."""
-
-    def test_20_checkpoints_all_accessible(self, real_repo, tmp_path):
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-
-        gc = GitCheckpoint(str(real_repo))
-        for i in range(1, 21):
-            (real_repo / f"file_{i}.txt").write_text(f"content {i}")
-            gc.checkpoint(step=f"step_{i}", module="stress_mod", attempt=1)
-
-        result = subprocess.run(
-            ["git", "tag", "-l", "pipeline/stress_mod/*"],
-            cwd=str(real_repo), capture_output=True, text=True,
-        )
-        tags = result.stdout.strip().split("\n")
-        assert len(tags) == 20
-
-        # Rollback to step 10
-        gc.rollback(step="step_10", module="stress_mod", attempt=1)
-        assert (real_repo / "file_10.txt").exists()
-        assert not (real_repo / "file_20.txt").exists()

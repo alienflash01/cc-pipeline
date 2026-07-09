@@ -297,16 +297,6 @@ class TestIssue42StopIteration:
 # ─── #12: Git tag module name with slash ───
 
 class TestIssue12TagSlash:
-    def test_tag_with_underscore_module(self, git_repo):
-        """Module names with underscores should create valid git tags."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-
-        gc = GitCheckpoint(repo_path=str(git_repo))
-        gc.checkpoint(step="scaffold", module="auth_v2", attempt=1)
-
-        completed = gc.list_completed_steps(module="auth_v2")
-        assert "scaffold" in completed
-
     def test_module_with_slash_rejected_at_config(self, tmp_path):
         """Module name with slash should be rejected (already covered by #11)."""
         from cc_pipeline.config import load_config

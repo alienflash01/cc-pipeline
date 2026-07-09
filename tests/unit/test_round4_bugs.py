@@ -185,18 +185,6 @@ class TestIssue11ExpectOrOperator:
         # For now we just verify it doesn't silently fail on a valid OR
 
 
-# ─── #12: git index.lock → checkpoint silent fail ───
-
-class TestIssue12GitIndexLock:
-    def test_checkpoint_uses_check_true(self):
-        """git commands in checkpoint should use check=True."""
-        import inspect
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        source = inspect.getsource(GitCheckpoint.checkpoint)
-        assert "check=True" in source, \
-            "git commit/add should use check=True to catch failures"
-
-
 # ─── #16: model whitespace only ───
 
 class TestIssue16ModelWhitespace:

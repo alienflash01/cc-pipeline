@@ -26,28 +26,6 @@ class TestBug1PostconditionTimeout:
         assert r.passed is True
 
 
-class TestBug3GitRollbackCheckTrue:
-    """#3: git rollback uses check=True — fails loudly, not silently."""
-
-    def test_rollback_nonexistent_tag_raises(self, tmp_path):
-        import subprocess
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init", "-b", "main"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "t"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
-        (repo / "f.txt").write_text("x")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
-        env = {**os.environ, "GIT_AUTHOR_NAME": "t"}
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, env=env)
-
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        gc = GitCheckpoint(str(repo))
-        # rollback to nonexistent tag should raise RuntimeError with stderr (not silently pass)
-        with pytest.raises(RuntimeError, match="failed"):
-            gc.rollback(step="nonexistent", module="mod1", attempt=99)
-
-
 class TestBug6SnippetUndefinedWarn:
     """#6: undefined snippet reference should warn."""
 

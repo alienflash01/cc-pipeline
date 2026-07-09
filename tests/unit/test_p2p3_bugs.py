@@ -12,38 +12,6 @@ GIT_ENV = {
 }
 
 
-# ─── #7: loop tag no file distinction ───
-
-class TestIssue7LoopTagNoFile:
-    def test_loop_files_get_distinct_tags(self, tmp_path):
-        """Loop-expanded steps should have distinct git tags including file name."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init", "-b", "main"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "t"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
-        (repo / "f.txt").write_text("x")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, env=GIT_ENV)
-
-        gc = GitCheckpoint(repo_path=str(repo))
-
-        # Simulate loop: generate[a.c] then generate[b.c]
-        gc.checkpoint(step="generate", module="auth", attempt=1, loop_file="a.c")
-        (repo / "a.c").write_text("a")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "a"], cwd=repo, capture_output=True, env=GIT_ENV)
-        gc.checkpoint(step="generate", module="auth", attempt=1, loop_file="b.c")
-
-        tags = subprocess.run(["git", "tag", "-l", "pipeline/*"], cwd=repo,
-                             capture_output=True, text=True).stdout.strip().split("\n")
-        # Bug: both checkpoints create same tag, second overwrites first
-        # Fix: tags should include file name when loop_file is set
-        assert len(tags) >= 2, f"Expected at least 2 distinct tags, got: {tags}"
-
-
 # ─── #8: no per-step timeout ───
 
 class TestIssue8PerStepTimeout:
@@ -78,16 +46,6 @@ class TestIssue10RenderBraces:
         from cc_pipeline.render import render
         result = render("hello {{world}}", {})
         assert "{" in result  # Should contain literal brace
-
-
-# ─── #17: git tag no GC ───
-
-class TestIssue17TagGC:
-    def test_cleanup_tags_command_exists(self):
-        """GitCheckpoint should have a cleanup method for old tags."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        assert hasattr(GitCheckpoint, "cleanup_tags"), \
-            "GitCheckpoint should have cleanup_tags method"
 
 
 # ─── #18: SIGTERM orphan CC subprocess ───

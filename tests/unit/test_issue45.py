@@ -22,7 +22,7 @@ GIT_ENV = {
 
 @pytest.fixture
 def git_repo(tmp_path):
-    """Minimal git repo so git_checkpoint.checkpoint works during a passing run."""
+    """Minimal git repo so state.json works during a passing run."""
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init"], cwd=repo, capture_output=True)

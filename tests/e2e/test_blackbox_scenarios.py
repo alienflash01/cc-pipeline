@@ -339,59 +339,6 @@ modules:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Scenario 7: Git checkpoint creates tags
-# ═══════════════════════════════════════════════════════════════
-
-class TestScenario7GitCheckpointTags:
-    """Verify git tags are created during pipeline execution."""
-
-    def test_tags_created_after_steps(self, real_repo, tmp_path):
-        from cc_pipeline.runner import ModuleRunner
-        from cc_pipeline.config import load_config
-        from cc_pipeline.compiler import PipelineCompiler
-
-        config = f"""
-repo: {real_repo}
-base_branch: main
-concurrency: 1
-max_retries: 1
-
-pipeline:
-  - id: step1
-    executor: shell
-    prompt: "echo hi"
-    postcondition:
-      shell: "echo ok"
-
-modules:
-  - name: math
-    spec_id: S
-    source_dir: src/
-    source_files: [math.c]
-    coverage: {{line_threshold: 80, branch_threshold: 70}}
-"""
-        config_path = tmp_path / "config.yaml"
-        config_path.write_text(config)
-        config = load_config(str(config_path))
-        compiler = PipelineCompiler(config)
-        steps = compiler.compile_module("math")
-
-        runner = ModuleRunner(
-            steps=steps, module_name="math",
-            worktree_path=str(real_repo),
-            run_dir=str(tmp_path / "runs"),
-        )
-        runner.run()
-
-        # Check git tag exists
-        result = subprocess.run(
-            ["git", "tag", "-l", "pipeline/math/*"],
-            cwd=str(real_repo), capture_output=True, text=True,
-        )
-        assert "pipeline/math/step1" in result.stdout
-
-
-# ═══════════════════════════════════════════════════════════════
 # Scenario 8: State file written for crash recovery
 # ═══════════════════════════════════════════════════════════════
 

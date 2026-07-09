@@ -71,6 +71,49 @@ class StateManager:
             with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2, ensure_ascii=False)
 
+    def mark_step_completed(self, module_name: str, step_id: str, loop_file: str = "") -> None:
+        """Mark a step as completed for resume support.
+
+        Args:
+            module_name: Module name.
+            step_id: Step identifier.
+            loop_file: Loop file name if per_file step (empty otherwise).
+        """
+        key = f"{step_id}/{loop_file}" if loop_file else step_id
+        with self._lock:
+            state = None
+            if self.state_file.exists():
+                try:
+                    with open(self.state_file) as f:
+                        state = json.load(f)
+                except (json.JSONDecodeError, ValueError):
+                    state = None
+            if state is None:
+                state = {"run_id": "unknown", "saved_at": "", "modules": {}}
+            if module_name not in state["modules"]:
+                state["modules"][module_name] = {}
+            completed = state["modules"][module_name].setdefault("completed_steps", [])
+            if key not in completed:
+                completed.append(key)
+            state["saved_at"] = datetime.now().isoformat()
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+
+    def get_completed_steps(self, module_name: str) -> set[str]:
+        """Get completed steps for a module (for resume)."""
+        with self._lock:
+            if not self.state_file.exists():
+                return set()
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                return set()
+            mods = state.get("modules", {})
+            if module_name not in mods:
+                return set()
+            return set(mods[module_name].get("completed_steps", []))
+
     def set_run_id(self, run_id: str) -> None:
         """Set run_id in state file (idempotent, thread-safe)."""
         with self._lock:

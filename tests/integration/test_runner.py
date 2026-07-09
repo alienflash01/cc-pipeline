@@ -190,69 +190,6 @@ class TestModuleRunner:
         assert result["status"] == "failed"
 
     @patch("cc_pipeline.executor.subprocess.run")
-    def test_git_checkpoint_called_per_step(self, mock_subproc, real_repo, tmp_path):
-        """Runner calls git checkpoint after each successful step."""
-        from cc_pipeline.runner import ModuleRunner
-        from cc_pipeline.config import load_config
-        from cc_pipeline.compiler import PipelineCompiler
-
-        yaml = RUNNER_YAML.replace("PLACEHOLDER", str(real_repo))
-        (tmp_path / "c.yaml").write_text(yaml)
-        config = load_config(str(tmp_path / "c.yaml"))
-        compiler = PipelineCompiler(config)
-        steps = compiler.compile_module("math")
-
-        mock_subproc.return_value = MagicMock(returncode=0, stdout='{"passed":true}', stderr="")
-        runner = ModuleRunner(
-            steps=steps,
-            module_name="math",
-            worktree_path=str(real_repo),
-            run_dir=str(tmp_path / "runs"),
-        )
-
-        with patch.object(runner.git_checkpoint, "checkpoint") as mock_ckpt:
-            mock_ckpt.return_value = "pipeline/math/scaffold/1"
-            runner.run()
-            assert mock_ckpt.call_count >= 2  # scaffold + generate
-
-    @patch("cc_pipeline.executor.subprocess.run")
-    def test_git_rollback_called_on_retry(self, mock_subproc, real_repo, tmp_path):
-        """Runner calls git rollback before retrying a failed step."""
-        from cc_pipeline.runner import ModuleRunner
-        from cc_pipeline.config import load_config
-        from cc_pipeline.compiler import PipelineCompiler
-        from cc_pipeline.postcondition import PostconditionResult
-
-        yaml = RUNNER_YAML.replace("PLACEHOLDER", str(real_repo))
-        config_path = tmp_path / "c.yaml"
-        config_path.write_text(yaml)
-        config = load_config(str(config_path))
-        compiler = PipelineCompiler(config)
-        steps = compiler.compile_module("math")
-
-        mock_subproc.return_value = MagicMock(returncode=0, stdout="done", stderr="")
-        runner = ModuleRunner(
-            steps=steps,
-            module_name="math",
-            worktree_path=str(real_repo),
-            run_dir=str(tmp_path / "runs"),
-        )
-
-        # Second check (generate step) fails first time, then passes
-        check_count = [0]
-        def flaky_check(step):
-            check_count[0] += 1
-            # check 1 = scaffold pass, check 2 = generate fail, check 3 = generate retry pass
-            if check_count[0] == 2:
-                return PostconditionResult(passed=False, reason="flaky")
-            return PostconditionResult(passed=True, reason="ok")
-        runner._check_postcondition = flaky_check
-
-        with patch.object(runner.git_checkpoint, "rollback_to_latest") as mock_rb:
-            runner.run()
-            assert mock_rb.call_count >= 1  # at least one rollback for retry
-
-    @patch("cc_pipeline.executor.subprocess.run")
     def test_logger_writes_events(self, mock_subproc, real_repo, tmp_path):
         """Runner logs events to transcript.jsonl."""
         from cc_pipeline.runner import ModuleRunner

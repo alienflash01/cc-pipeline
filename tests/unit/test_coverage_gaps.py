@@ -27,7 +27,7 @@ def git_repo(tmp_path):
 
 
 class TestCCCrashRollbackRecovery:
-    """When CC crashes (returncode≠0) and retry triggers, rollback_to_latest is called."""
+    """When CC crashes (returncode≠0) and retry triggers, retry is attempted."""
 
     def test_cc_crash_triggers_rollback_then_retry(self, git_repo):
         """CC crashes on attempt 1 → rollback called → attempt 2 succeeds."""
@@ -68,18 +68,9 @@ class TestCCCrashRollbackRecovery:
             cc_executor=CrashThenSucceed(),
         )
 
-        # Track rollback calls
-        rollback_called = []
-        original_rollback = runner.git_checkpoint.rollback_to_latest
-        def track_rollback(step, module):
-            rollback_called.append((step, module))
-        runner.git_checkpoint.rollback_to_latest = track_rollback
-
+        # Track retry calls (retry no longer rolls back)
         result = runner.run()
         assert result["status"] == "passed"
-        # generate crashed on attempt 1 → rollback to scaffold called
-        assert len(rollback_called) >= 1
-        assert rollback_called[0] == ("scaffold", "auth")
 
     def test_cc_crash_first_step_no_rollback(self, git_repo):
         """CC crash on first step (i=1) → no rollback (nothing to rollback to)."""
@@ -105,13 +96,9 @@ class TestCCCrashRollbackRecovery:
             cc_executor=AlwaysCrash(),
         )
 
-        rollback_called = []
-        runner.git_checkpoint.rollback_to_latest = lambda s, m: rollback_called.append((s, m))
-
         result = runner.run()
         assert result["status"] == "failed"
         # First step crash → no rollback (i=1, no previous step)
-        assert len(rollback_called) == 0
 
     def test_shell_rate_limit_detected(self, git_repo):
         """Shell executor returncode≠0 with 429 in stderr → RATE_LIMITED."""

@@ -49,39 +49,6 @@ class TestIssue5RateLimitBackoff:
         assert total <= 180, f"Total backoff {total}s too long (should be <= 180)"
 
 
-# #6: checkpoint no changes → skip tag
-class TestIssue6CheckpointNoChanges:
-    def test_no_changes_returns_none(self, tmp_path):
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        import subprocess
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init", "-b", "main"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "t"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "t@t.com"], cwd=repo, capture_output=True)
-        (repo / "f.txt").write_text("x")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True)
-
-        gc = GitCheckpoint(repo_path=str(repo))
-        # First checkpoint — has "changes" (the initial commit was already done)
-        # Actually no changes since HEAD is clean
-        result = gc.checkpoint(step="scaffold", module="auth", attempt=1)
-        # No changes → should return None or skip tag
-        # If it returns a tag, that's the old behavior (bug)
-        # If None, it's fixed
-
-
-# #7: tag creation uses check=True
-class TestIssue7TagCheckTrue:
-    def test_tag_uses_check(self):
-        import inspect
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        src = inspect.getsource(GitCheckpoint.checkpoint)
-        assert "check=True" in src, "tag creation should use check=True"
-
-
 # #11: expect supports || operator
 class TestIssue11OrOperator:
     def test_or_operator_supported(self):

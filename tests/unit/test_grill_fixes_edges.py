@@ -246,63 +246,6 @@ class TestStateConcurrencyEdges:
 
 
 # ═══════════════════════════════════════════════════════════════
-# Fix 5: Rollback to latest — more scenarios
-# ═══════════════════════════════════════════════════════════════
-
-class TestRollbackLatestEdges:
-    """Edge cases for rollback_to_latest."""
-
-    @pytest.fixture
-    def git_repo(self, tmp_path):
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        subprocess.run(["git", "init"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.name", "test"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "config", "user.email", "test@test.com"], cwd=repo, capture_output=True)
-        (repo / "README.md").write_text("# test")
-        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "init"], cwd=repo, capture_output=True, env=GIT_ENV)
-        return repo
-
-    def test_find_latest_when_only_one_checkpoint(self, git_repo):
-        """Single checkpoint → find_latest returns it."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        gc = GitCheckpoint(str(git_repo))
-        (git_repo / "f.txt").write_text("x")
-        gc.checkpoint("scaffold", "auth", 1)
-        assert gc.find_latest_checkpoint("scaffold", "auth") == "pipeline/auth/scaffold/1"
-
-    def test_find_latest_numeric_sort_not_lexicographic(self, git_repo):
-        """Tags sorted numerically: attempt 10 > attempt 9, not 9 > 10."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        gc = GitCheckpoint(str(git_repo))
-        for i in range(1, 12):
-            (git_repo / f"f{i}.txt").write_text(str(i))
-            gc.checkpoint("gen", "auth", i)
-        latest = gc.find_latest_checkpoint("gen", "auth")
-        assert latest == "pipeline/auth/gen/11"
-
-    def test_rollback_to_latest_returns_false_if_no_tags(self, git_repo):
-        """rollback_to_latest returns False if no checkpoint exists."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        gc = GitCheckpoint(str(git_repo))
-        assert gc.rollback_to_latest("nonexistent", "auth") is False
-
-    def test_find_latest_different_modules_isolated(self, git_repo):
-        """find_latest for module A doesn't see module B's tags."""
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-        gc = GitCheckpoint(str(git_repo))
-        (git_repo / "a.txt").write_text("a")
-        gc.checkpoint("scaffold", "mod_a", 1)
-        (git_repo / "b.txt").write_text("b")
-        gc.checkpoint("scaffold", "mod_b", 1)
-        gc.checkpoint("scaffold", "mod_b", 2)
-
-        assert gc.find_latest_checkpoint("scaffold", "mod_a") == "pipeline/mod_a/scaffold/1"
-        assert gc.find_latest_checkpoint("scaffold", "mod_b") == "pipeline/mod_b/scaffold/2"
-
-
-# ═══════════════════════════════════════════════════════════════
 # Fix 6: Context passing — more scenarios
 # ═══════════════════════════════════════════════════════════════
 

@@ -183,16 +183,9 @@ class Orchestrator:
             from_ref = None
             skip_steps = set()
             if self.resume:
-                from cc_pipeline.git_checkpoint import GitCheckpoint
-                gc = GitCheckpoint(repo_path=str(self.worktree_mgr.repo_path))
-                skip_steps = set(gc.list_completed_steps(module=module_name))
-                if skip_steps:
-                    # Find the latest checkpoint across all completed steps
-                    for step_id in sorted(skip_steps, reverse=True):
-                        latest = gc.find_latest_checkpoint(step=step_id, module=module_name)
-                        if latest:
-                            from_ref = latest
-                            break
+                from cc_pipeline.state import StateManager
+                sm = StateManager(run_dir=str(self.run_dir))
+                skip_steps = sm.get_completed_steps(module_name)
 
             wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref)
 
@@ -237,6 +230,7 @@ class Orchestrator:
                 cc_executor=CCExecutor(model=self.cc_model),
                 shell_executor=ShellExecutor(),
                 verbose=self.verbose,
+                state_manager=state,
             )
 
             # Run pipeline

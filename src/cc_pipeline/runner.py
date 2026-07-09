@@ -19,7 +19,6 @@ from pathlib import Path
 
 from cc_pipeline.compiler import CompiledStep
 from cc_pipeline.executor import CCExecutor, CCResult, ShellExecutor, ShellResult
-from cc_pipeline.git_checkpoint import GitCheckpoint
 from cc_pipeline.logger import Logger
 from cc_pipeline.postcondition import evaluate as eval_postcondition, PostconditionResult
 
@@ -102,6 +101,7 @@ class ModuleRunner:
         cc_executor: CCExecutor | None = None,
         shell_executor: ShellExecutor | None = None,
         verbose: int = 0,
+        state_manager=None,
     ):
         self.steps = steps
         self.module_name = module_name
@@ -110,8 +110,8 @@ class ModuleRunner:
         self.cc_executor = cc_executor or CCExecutor()
         self.shell_executor = shell_executor or ShellExecutor()
         self.logger = Logger(run_dir=run_dir, module_name=module_name)
-        self.git_checkpoint = GitCheckpoint(worktree_path)
         self.verbose = verbose
+        self.state_manager = state_manager
 
     def run(self) -> dict:
         """Execute all steps sequentially. Supports on_failure jump-back.
@@ -202,12 +202,6 @@ class ModuleRunner:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
-                        if step_idx > 0:
-                            prev_step = self.steps[step_idx - 1]
-                            self.git_checkpoint.rollback_to_latest(
-                                step=prev_step.step_id,
-                                module=self.module_name,
-                            )
                         continue
                     else:
                         self.logger.log_fail(
@@ -224,11 +218,7 @@ class ModuleRunner:
                 if pc_result.passed:
                     self.logger.log_pass(step=step.step_id, attempt=current_attempt,
                                          info={"reason": pc_result.reason})
-                    self.git_checkpoint.checkpoint(
-                        step=step.step_id,
-                        module=self.module_name,
-                        attempt=current_attempt,
-                    )
+                    self._mark_step_completed(step)
                     self._append_progress(step, "PASS", current_attempt)
                     completed = step_idx + 1
                     passed = True
@@ -247,12 +237,6 @@ class ModuleRunner:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
-                        if step_idx > 0:
-                            prev_step = self.steps[step_idx - 1]
-                            self.git_checkpoint.rollback_to_latest(
-                                step=prev_step.step_id,
-                                module=self.module_name,
-                            )
                         continue
                     else:
                         self.logger.log_fail(
@@ -361,6 +345,13 @@ class ModuleRunner:
                 )
 
         return prompt
+
+    def _mark_step_completed(self, step: CompiledStep) -> None:
+        """Mark step as completed in state.json (for resume)."""
+        if self.state_manager:
+            self.state_manager.mark_step_completed(
+                self.module_name, step.step_id, step.loop_file or ""
+            )
 
     def _append_progress(self, step: CompiledStep, status: str, attempt: int) -> None:
         """Append a progress entry to .pipeline/progress.md after each step.

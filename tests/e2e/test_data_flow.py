@@ -285,29 +285,3 @@ class TestShellPostconditionWithDataFlow:
         assert (pd / "scaffold.verified.json").exists()
         assert (pd / "generate.json").exists()
 
-
-class TestDataFlowWithGitCheckpoint:
-    """Git checkpoint preserves .pipeline/ across steps."""
-
-    def test_pipeline_dir_preserved_after_checkpoint(self, real_repo, tmp_path):
-        from cc_pipeline.git_checkpoint import GitCheckpoint
-
-        # Create .pipeline/ with a file
-        pd = real_repo / ".pipeline"
-        pd.mkdir()
-        (pd / "scaffold.json").write_text('{"step": "scaffold"}')
-
-        # Checkpoint
-        gc = GitCheckpoint(str(real_repo))
-        gc.checkpoint("scaffold", "auth", 1)
-
-        # .pipeline/ should be in the commit
-        assert (real_repo / ".pipeline" / "scaffold.json").exists()
-
-        # Make more changes
-        (real_repo / "extra.txt").write_text("extra")
-        gc.checkpoint("generate", "auth", 1)
-
-        # Rollback to scaffold — .pipeline/scaffold.json should survive
-        gc.rollback_to_latest("scaffold", "auth")
-        assert (real_repo / ".pipeline" / "scaffold.json").exists()
