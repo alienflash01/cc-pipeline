@@ -105,7 +105,23 @@ def load_config(path: str) -> PipelineConfig:
 
     if raw is None:
         raise ValueError("Config file is empty")
-    
+
+    # Warn on unknown global config fields (catch typos)
+    _KNOWN_GLOBAL_FIELDS = {
+        "repo", "base_branch", "concurrency", "max_retries", "model",
+        "output_branch_prefix", "worktree_root",
+        "prompt_prefix", "snippets", "commit_message",
+        "auto_merge", "auto_resolve_conflicts",
+        "modules", "pipeline",  # sections
+    }
+    for key in raw:
+        if key not in _KNOWN_GLOBAL_FIELDS:
+            import difflib as _dl
+            close = _dl.get_close_matches(key, list(_KNOWN_GLOBAL_FIELDS), n=1, cutoff=0.6)
+            hint = f" — did you mean '{close[0]}'?" if close else ""
+            import warnings as _gw
+            _gw.warn(f"Unknown global field '{key}'{hint}", stacklevel=2)
+
     # Required: repo
     if "repo" not in raw or not raw["repo"]:
         raise ValueError("Missing required field: repo")
@@ -196,8 +212,17 @@ def load_config(path: str) -> PipelineConfig:
         pipeline.append(step)
     
     # Parse modules
+    _KNOWN_MODULE_FIELDS = {"name", "spec_id", "source_dir", "source_files", "variables", "coverage", "file_order"}
     modules = []
     for mod_raw in raw["modules"]:
+        # Warn on unknown module fields (catch typos like 'sorce_dir')
+        for key in mod_raw:
+            if key not in _KNOWN_MODULE_FIELDS:
+                import difflib
+                close = difflib.get_close_matches(key, list(_KNOWN_MODULE_FIELDS), n=1, cutoff=0.6)
+                hint = f" — did you mean '{close[0]}'?" if close else ""
+                import warnings as _mw
+                _mw.warn(f"Unknown field '{key}' in module '{mod_raw.get('name', '?')}'{hint}", stacklevel=2)
         # Migration: fold deprecated 'coverage' into 'variables'
         variables = mod_raw.get("variables", {})
         if "coverage" in mod_raw:
