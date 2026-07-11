@@ -87,18 +87,32 @@ class WorktreeManager:
                             cwd=self.repo_path, capture_output=True,
                         )
 
-            # Delete old branch if exists
-            subprocess.run(
-                ["git", "branch", "-D", branch],
-                cwd=self.repo_path, capture_output=True,
-            )
-
-            # Create worktree with a new branch from ref or base
-            ref = from_ref or self.base_branch
-            wt_result = subprocess.run(
-                ["git", "worktree", "add", "-b", branch, str(wt_path), ref],
+            # Check if branch already exists (e.g. from a previous run)
+            branch_check = subprocess.run(
+                ["git", "rev-parse", "--verify", branch],
                 cwd=self.repo_path, capture_output=True, text=True,
             )
+            branch_exists = branch_check.returncode == 0
+
+            if branch_exists and resume:
+                # Resume: branch exists but worktree missing → recreate from branch
+                # This preserves the code from the previous run
+                print(f"  ♻️  Resume: recreating worktree from existing branch '{branch}'")
+                wt_result = subprocess.run(
+                    ["git", "worktree", "add", str(wt_path), branch],
+                    cwd=self.repo_path, capture_output=True, text=True,
+                )
+            else:
+                # Normal path: delete old branch, create fresh from base
+                subprocess.run(
+                    ["git", "branch", "-D", branch],
+                    cwd=self.repo_path, capture_output=True,
+                )
+                ref = from_ref or self.base_branch
+                wt_result = subprocess.run(
+                    ["git", "worktree", "add", "-b", branch, str(wt_path), ref],
+                    cwd=self.repo_path, capture_output=True, text=True,
+                )
             if wt_result.returncode != 0:
                 stderr_msg = wt_result.stderr.strip()
                 raise RuntimeError(
