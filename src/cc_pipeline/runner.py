@@ -480,10 +480,9 @@ class ModuleRunner:
         shell = step.postcondition.get("shell", "true")
         expect = step.postcondition.get("expect")
 
-        # Verbose: show postcondition execution
-        if self.verbose >= 1:
-            ts = datetime.now().strftime("%H:%M:%S")
-            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ postcondition: {shell[:80]}")
+        # Always print postcondition command (not just verbose)
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"  [{ts}] [{self.module_name}] postcondition: {shell[:100]}")
 
         result = eval_postcondition(
             shell=shell,
@@ -491,11 +490,13 @@ class ModuleRunner:
             cwd=self.worktree_path,
         )
 
-        # Verbose: show postcondition result
-        if self.verbose >= 1 and not result.passed:
+        # Always print postcondition result when failed
+        if not result.passed:
             ts = datetime.now().strftime("%H:%M:%S")
             stdout_preview = (result.stdout or "")[:200]
-            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ postcondition stdout: {stdout_preview}")
+            print(f"  [{ts}] [{self.module_name}] postcondition FAIL: {result.reason}")
+            if stdout_preview:
+                print(f"  [{ts}] [{self.module_name}]   stdout: {stdout_preview}")
 
         return result
 
