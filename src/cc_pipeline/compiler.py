@@ -129,14 +129,18 @@ class PipelineCompiler:
                             f"Step '{step.id}' module '{module.name}': "
                             f"source_files entry must be string or dict, got {type(entry)}"
                         )
-                    step_vars = {**vars_with_file, "output": step.output or ""}
+                    # Expand {file} in output filename for per_file isolation
+                    rendered_output = step.output or ""
+                    if rendered_output and "{file}" in rendered_output:
+                        rendered_output = rendered_output.replace("{file}", loop_file)
+                    step_vars = {**vars_with_file, "output": rendered_output}
                     compiled.append(CompiledStep(
                         step_id=step.id,
                         executor=step.executor,
                         rendered_prompt=render(self._resolve_prompt(step), step_vars),
                         postcondition=self._render_postcondition(step, vars_with_file),
                         retry=retry,
-                        output=step.output,
+                        output=rendered_output,
                         depends_on=step.depends_on,
                         loop_file=loop_file,
                         model=step.model,

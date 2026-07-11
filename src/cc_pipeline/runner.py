@@ -474,11 +474,24 @@ class ModuleRunner:
         shell = step.postcondition.get("shell", "true")
         expect = step.postcondition.get("expect")
 
-        return eval_postcondition(
+        # Verbose: show postcondition execution
+        if self.verbose >= 1:
+            ts = datetime.now().strftime("%H:%M:%S")
+            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ postcondition: {shell[:80]}")
+
+        result = eval_postcondition(
             shell=shell,
             expect=expect,
             cwd=self.worktree_path,
         )
+
+        # Verbose: show postcondition result
+        if self.verbose >= 1 and not result.passed:
+            ts = datetime.now().strftime("%H:%M:%S")
+            stdout_preview = (result.stdout or "")[:200]
+            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} │ postcondition stdout: {stdout_preview}")
+
+        return result
 
     def _detect_file_changes(self) -> list[str]:
         """Detect files created/modified by CC via git status."""

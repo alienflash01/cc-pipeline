@@ -187,6 +187,11 @@ def load_config(path: str) -> PipelineConfig:
                 raise ValueError(
                     f"Step '{step.id}': postcondition missing required 'shell' field"
                 )
+            # Detect common typo: 'except' instead of 'expect'
+            if "except" in step.postcondition and "expect" not in step.postcondition:
+                raise ValueError(
+                    f"Step '{step.id}': postcondition has 'except' — did you mean 'expect'?"
+                )
 
         pipeline.append(step)
     

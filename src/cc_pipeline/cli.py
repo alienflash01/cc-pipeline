@@ -555,6 +555,22 @@ def _cmd_resume(args) -> int:
     # Filter modules BEFORE Orchestrator construction
     config.modules = [m for m in config.modules if m.name in modules_to_run]
 
+    # Dry-run: show what resume would do
+    if getattr(args, "dry_run", False):
+        from cc_pipeline.state import StateManager
+        sm = StateManager(str(run_dir))
+        print("📊 Resume Preview (dry-run)")
+        print("═══════════════════════════════════════════════\n")
+        for m in config.modules:
+            completed = sm.get_completed_steps(m.name)
+            if completed:
+                print(f"  Module: {m.name} — skip {len(completed)} completed step(s): {sorted(completed)}")
+            else:
+                print(f"  Module: {m.name} — no completed steps, will run all")
+        print(f"\n  Modules to run: {[m.name for m in config.modules]}")
+        print("  ✅ Run without --dry-run to execute resume.")
+        return 0
+
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
 
