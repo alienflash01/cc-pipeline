@@ -14,7 +14,7 @@
 6. [CC 间上下文传递](#6-cc-间上下文传递)
 7. [Postcondition 门控写法](#7-postcondition-门控写法)
 8. [变量注入](#8-变量注入)
-9. [Retry、回滚与 on_failure 回跳](#9retry回滚与-on_failure-回跳)
+9. [Retry 与 on_failure 回跳](#9retry-与-on_failure-回跳)
 10. [CC 错误处理（CO 式分层）](#10-cc-错误处理co-式分层)
 11. [运行时输出与 Preflight 检查](#11-运行时输出与-preflight-检查)
 12. [init 命令（交互式生成配置）](#12-init-命令交互式生成配置)
@@ -102,13 +102,11 @@ cc-pipeline 通过两层机制把这个「全权限」约束在隔离边界内�
 
 1. **git worktree 物理隔离**：每个模块在独立 worktree 中运行，CC 的所有改动
    都落在 worktree 里，**主仓库目录不会被直接触碰**。成功后清理，失败后保留供排查。
-2. **git checkpoint 链 + 回滚**：每一步成功后 `commit + tag`，重试时回滚到
-   「上一步最后一次成功」的已验证状态（`git reset --hard` + `git clean -fd --exclude=.pipeline/`），
-   保留源码可恢复，同时保留 `.pipeline/` 运行上下文。
+2. **state.json 记录 + resume**：每步 postcondition 通过后记录到 state.json，resume 时精确跳过已完成的 step（含 per_file 文件级粒度）。
 
 > **如何进一步收紧**：若你的环境对 CC 可执行的工具敏感，可自建 wrapper 限制
 > `allowedTools`（例如 judge 步骤默认只允许 `["Read", "Bash"]`），或在 worktree
-> 外层加沙箱（容器 / chroot）。但 worktree + checkpoint 已能在常规场景下保护源码。
+> 外层加沙箱（容器 / chroot）。但 worktree + state.json 已能在常规场景下保护源码。
 
 ---
 
@@ -214,8 +212,12 @@ cc-pipeline run modules.yaml
 | `auto_resolve_conflicts` | bool | `false` | merge 冲突时是否用 CC 自动解决（需 `auto_merge: true`） |
 
 > **变更**：`output_branch_prefix` 默认值已从 `ut-auto` 改为 `cc-auto`（cc-pipeline 是通用框架，不再特指 UT）。
-> **变更**：`pr_labels` / `pr_title_template` 已删除（PR 功能移除，改为自动 merge worktree 分支到 base_branch）。
+> **变更**：`pr_labels` / `pr_title_template` 已删除（PR 功能移除，改为 auto_merge 控制 worktree 分支 merge）。
 > **变更**：不配 `base_branch` 时自动检测 git 默认分支。
+> **变更**：`auto_merge` 默认 `false`——用户自己控制 merge。设 `true` 时自动 squash merge。
+> **新增**：`commit_message` 模板支持 `{module}` 变量。
+> **新增**：`auto_resolve_conflicts: true` 时 CC 自动解决 merge 冲突。
+> **新增**：配置拼写检测——全局/模块/步骤三级，拼错时提示最接近的字段名。
 
 ### Module 字段
 
@@ -284,14 +286,14 @@ pipeline:
     executor: claude-code
     loop: per_file
     prompt_file: prompts/generate.md   # 从外部 .md 文件加载 prompt
-    output: generate.json
+    output: generate-{file}.json       # {file} 占位符：每文件独立输出
     timeout: 900                        # 按步骤覆盖超时（秒）
     model: glm-4.6                      # 按步骤覆盖模型
     postcondition:
       shell: "check_coverage.sh {module} {file}"
       expect: "$.line >= {line_threshold}"
-    retry: 3
-    on_failure: scaffold                # 失败后回跳到 scaffold（不回滚）
+    retry: 3                            # per-step retry，覆盖全局 max_retries
+    on_failure: scaffold                # retry 用完后跳回 scaffold（不回滚）
     on_failure_max_jumps: 3
     depends_on: scaffold
 
@@ -340,16 +342,14 @@ modules:
 | `prompt_file` | string | `null` | 从外部 `.md` 文件加载 prompt |
 | `model` | string | `""` | 按步骤指定模型（空 = 用全局/CC 默认，覆盖全局 `model`） |
 | `loop` | string | `null` | `per_file` = 逐文件串行 |
-| `retry` | int | 全局 `max_retries` | 该步最大重试次数 |
+| `retry` | int | 全局 `max_retries` | 该步最大重试次数（不回滚，在当前状态上重跑） |
 | `depends_on` | string | `null` | 前置步骤 ID |
-| `postcondition` | dict | `null` | 通过条件 |
-| `output` | string | `null` | CC 产出状态文件名（写入 `.pipeline/{output}`） |
+| `postcondition` | dict | `null` | 通过条件（shell + expect） |
+| `output` | string | `null` | CC 产出状态文件名。per_file 下支持 `{file}` 占位符（如 `eval-{file}.json`） |
 | `output_prompt` | string | `null` | 自定义 output 注入文本（替代框架默认中文指令） |
 | `timeout` | int | `null` | 按步骤超时（秒） |
-| `on_failure` | string | `null` | 失败后跳转的 step_id（不回滚） |
-| `on_failure_max_jumps` | int | `2` | `on_failure` 最大跳转次数 |
-| `skill` | string | `null` | ⚠️ **未实现**（声明会被忽略并警告） |
-| `rollback` | string | `git-checkpoint` | 回滚方式 |
+| `on_failure` | string | `null` | retry 用完后跳转的 step_id（不回滚） |
+| `on_failure_max_jumps` | int | `2` | `on_failure` 最大跳转次数（per-target 独立计数） |
 
 > **提示**：`prompt_file` 指向不存在的文件时，加载期即报错（不再静默）。用
 > `cc-pipeline check --config config.yaml` 可一次性校验所有 `prompt_file` 是否就位。
@@ -728,65 +728,66 @@ prompt: |
 
 ---
 
-## 9. Retry、回滚与 on_failure 回跳
+## 9. Retry 与 on_failure 回跳
 
 ### Retry 机制
 
 当 CC 执行失败或 postcondition 不通过时：
-1. **git rollback** 到上一个成功步骤的最新 checkpoint
-2. 清除当前步骤的产出物
-3. 重新执行当前步骤
-4. 最多重试 `retry` 次
+1. **不回滚**——在当前 worktree 状态上直接重跑
+2. 最多重试 `retry` 次（per-step 覆盖全局 `max_retries`）
+
+```yaml
+# 全局默认
+max_retries: 3
+
+pipeline:
+  - id: generate
+    retry: 5           # per-step 覆盖，最多重试 5 次
+```
+
+> **变更**：retry 不再回滚 git。CC 在上一次的代码基础上继续改进（修复比从零重写更高效）。
+
+### 步骤完成记录（state.json）
+
+每个成功的步骤（postcondition 通过）记录到 `state.json`：
+
+```json
+{
+  "modules": {
+    "auth": {
+      "completed_steps": ["scaffold", "generate/auth_login.c"],
+      "status": "running"
+    }
+  }
+}
+```
+
+- 非 loop step：key 为 `step_id`
+- per_file loop step：key 为 `step_id/loop_file`
+- 只有 postcondition 通过才记录
+
+### on_failure 回跳
+
+`retry` 耗尽后，若设置了 `on_failure`，框架跳到目标 step 重新执行：
 
 ```yaml
 - id: generate
-  retry: 3           # 最多重试 3 次
-  rollback: git-checkpoint   # 回滚方式（默认）
-```
-
-### Git Checkpoint 机制
-
-每个成功的步骤会创建 git tag：
-
-```
-pipeline/{module}/{step}/{attempt}
-例: pipeline/auth/scaffold/3     ← scaffold 第 3 次才过
-    pipeline/auth/generate/1     ← generate 一次过
-```
-
-**重试时**：使用 `rollback_to_latest()` 回滚到上一个步骤的**最后一次成功 attempt**（不是 attempt=1），确保回滚到的是一个已验证的正确状态。
-
-### 重试日志
-
-```
-[step_start] step=generate attempt=1
-[retry]      step=generate attempt=1 reason="coverage 65 < 80"
-[step_start] step=generate attempt=2
-[pass]       step=generate attempt=2 reason="All conditions passed"
-```
-
-实时带时间戳的版本见 [§11 运行时输出](#11-运行时输出与-preflight-检查)。
-
-### on_failure 回跳（不回滚）
-
-`retry` 耗尽后，若设置了 `on_failure`，框架会**跳到目标 step 重新执行**，而不是回滚当前步重跑：
-
-```yaml
-- id: generate
-  on_failure: scaffold          # generate 彻底失败 → 跳回 scaffold
+  on_failure: scaffold          # generate retry 用完 → 跳回 scaffold
   on_failure_max_jumps: 3       # 最多回跳 3 次（默认 2）
 ```
 
-- **不回滚**：跳转时保留当前 worktree 状态，不执行 `git rollback`
-- 跳转计数：每跳一次 `jump_count + 1`，达到 `on_failure_max_jumps` 后不再跳转，标记失败
-- 跳转事件记入 transcript：`event=on_failure_jump`，含 `from / to / jump`
+- **不回滚**：跳转时保留当前 worktree 状态
+- **per-target 计数**：每个 on_failure 目标独立计数，不互相影响
+- 跳转事件记入 transcript：`event=on_failure_jump`
 
 #### retry 与 on_failure 的区别
 
 | 机制 | 是否回滚 | 目标 | 适用场景 |
 |------|:------:|------|---------|
-| `retry` | ✅ 回滚 | **同一步**重跑 | CC 偶发抽风、覆盖率差一点 |
-| `on_failure` | ❌ 不回滚 | **跳到另一步** | 当前步是上一步的下游产物有问题，需要重做上游 |
+| `retry` | ❌ 不回滚 | **同一步**重跑 | CC 偶发抽风、覆盖率差一点 |
+| `on_failure` | ❌ 不回滚 | **跳到另一步** | 上游产物有问题，需要重做上游 |
+
+> 两者都不回滚。区别仅在"跳不跳到另一个 step"。
 
 ---
 
@@ -1224,13 +1225,14 @@ cc-pipeline resume config.yaml --run-dir <dir> -v   # 详细输出（每步带�
 恢复行为（**幂等**）：
 
 - **module 级跳过**：读 `orchestrator-state.json`，状态为 `passed` 的 module 整体跳过
-- **step 级跳过**：对未完成的 module，读取 git tag（`pipeline/{module}/{step}/*`）找出已完成的 step，只重跑剩余步骤
-- **worktree 从 checkpoint 恢复**：worktree 不是从 `base_branch` 重建，而是从最近一次成功 checkpoint 的 ref 创建，保留已完成步的产物
+- **step 级跳过**：读 `state.json` 的 `completed_steps` 列表，精确跳过已完成的 step（含 per_file 的文件级粒度）
+- **worktree 重建**：worktree 从 `base_branch` 重新创建。已完成 step 的产物**不在 worktree 里**（state.json 只记录完成状态，不保存代码快照）
 - 失败 / error 的 module 会重新执行
 
 ```
   Skipping passed: ['auth', 'crypto']
   Resuming: ['payment']
+  ⏭️  Resume: skipping 2 completed step(s) for 'payment': ['scaffold', 'generate/pay.c']
 ```
 
 ### 手动检查失败的 worktree
@@ -1243,8 +1245,7 @@ ls {run_dir}/worktrees/
 
 # 进入 worktree 手动分析
 cd {run_dir}/worktrees/auth/
-git log --oneline  # 查看 checkpoint 历史
-git tag -l "pipeline/auth/*"  # 查看所有 checkpoint tag
+git log --oneline  # 查看 worktree 分支历史
 ```
 
 ---
@@ -1433,7 +1434,7 @@ examples/
 
 ### Q: 如何限制 CC 不能修改源码？
 
-**A:** 在 claude-code executor 的 prompt 中明确约束："只修改 tests/ 目录，不要修改 src/ 目录"。框架层的 GitCheckpoint 确保即使 CC 改了源码，rollback 时也会恢复。
+**A:** 在 claude-code executor 的 prompt 中明确约束："只修改 tests/ 目录，不要修改 src/ 目录"。框架层的 worktree 隔离确保 CC 的改动只落在 worktree 里，主仓库不受影响。
 
 ### Q: 如何支持非 UT 场景？
 
@@ -1486,7 +1487,7 @@ examples/
 
 ### Q: 回滚后数据安全吗？
 
-**A:** 回滚使用 `git reset --hard` + `git clean -fd --exclude=.pipeline/`，恢复到上一个成功步骤的最新 checkpoint。`.pipeline/` 目录被保留（`--exclude`）。注意 worktree 内**其他未跟踪文件**会被 `git clean` 清掉。
+**A:** retry 不再回滚（在当前代码基础上重跑）。state.json 记录已完成步骤，resume 时跳过。`.pipeline/` 目录保留运行上下文（progress.md / output JSON）。
 
 ### Q: 模型怎么指定？
 
@@ -1494,7 +1495,7 @@ examples/
 
 ### Q: 后台跑挂了怎么办？
 
-**A:** 用 `resume` 续跑（幂等，跳过已成功的 module/step，worktree 从 checkpoint 恢复）。用 `report` 生成报告定位失败原因。
+**A:** 用 `resume` 续跑（幂等，跳过已成功的 module/step，state.json 记录完成状态）。用 `report` 生成报告定位失败原因。
 
 ### Q: 为什么跑起来终端一开始没反应？
 
@@ -1559,7 +1560,9 @@ cc-pipeline --help                                 # 帮助
 
 | 版本 | 日期 | 主要变更 |
 |------|------|---------|
-| v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默（启动横幅 + 模块进度行无条件打印）、`run --dry-run` 配置预览、preflight 运行前检查（只 warn 不停）、`stop` 停止语义可信（30s 后复查存活、不再误报 / 误删 PID）、`output_branch_prefix` 默认值改为 `cc-auto`、init/check 命令补入文档与速查表、examples/ 双示例（quickstart-shell 无 CC 入口 + quickstart-cc 完整编排）；`file_order: batched\|sequential` 控制 per_file 展开顺序、postcondition `expect: true/false` 字面匹配（不再误解析为 JSON）、shell executor 失败详情（exit code + stderr/stdout 末 5 行 + verbose 实时打印）、Ctrl+C/SIGTERM 优雅退出（kill CC 子进程 + state 落盘 + 可 resume）、`resume --verbose/-v` 续跑详细输出 |
+| v0.3.2 | 2026-07-09 | 去掉 git_checkpoint（-868行），retry/on_failure 统一不回滚，resume 改用 state.json；squash merge + commit_message 模板 + auto_merge 开关 + AI 冲突解决；snippets 公共片段；output `{file}` 隔离；三级配置拼写检测（global/module/step）；worktree 残留修复（shutil.rmtree）；所有 git 操作 stderr 可见；postcondition 执行可见（-v）；resume --dry-run；--module 逗号多选 |
+| v0.3.1 | 2026-07-08 | Round 5+6 审计修复（11 bug）：postcondition 超时、merge 并发竞态锁、jump_count per-target、worktree 子串误匹配、daemon fd 泄漏、shell 失败终端打印；config encoding=utf-8；__main__.py；TESTING-RULES.md + AGENTS.md |
+| v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默、`run --dry-run` 配置预览、preflight 检查、`file_order`、postcondition `expect: true/false`、shell 失败详情、Ctrl+C 优雅退出、verbose 三级 |
 | v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
 | v0.2 | 2026-07-01 | CC 上下文传递、CO 式错误处理、rate limit 保护、orchestrator 异常保护、rollback_to_latest |
 | v0.1 | 2026-06-30 | 初始版本：Phase 1-4 开发完成，135 tests |
