@@ -189,7 +189,7 @@ class Orchestrator:
                 if skip_steps:
                     print(f"  ⏭️  Resume: skipping {len(skip_steps)} completed step(s) for '{module_name}': {sorted(skip_steps)}")
 
-            wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref)
+            wt_path = self.worktree_mgr.create(module_name, from_ref=from_ref, resume=self.resume)
 
             # Find the module config
             module = None

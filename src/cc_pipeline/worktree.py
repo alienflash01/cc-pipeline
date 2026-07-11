@@ -25,20 +25,34 @@ class WorktreeManager:
         self._lock = threading.Lock()  # serialize git worktree operations
         self._worktrees: dict[str, str] = {}  # module_name → path
 
-    def create(self, module_name: str, from_ref: str | None = None) -> str:
+    def create(self, module_name: str, from_ref: str | None = None, resume: bool = False) -> str:
         """Create a worktree for a module.
 
         Args:
             module_name: Module name (used for branch + path naming).
-            from_ref: Git ref (tag/commit/branch) to create worktree from.
-                      If None, uses base_branch. Used by resume to restore
-                      from latest checkpoint.
+            from_ref: Git ref to create the worktree from (default: base_branch).
+            resume: If True, reuse existing worktree + branch (don't delete/rebuild).
 
         Returns:
             Absolute path to the worktree directory.
         """
         branch = f"{self.branch_prefix}/{module_name}"
         wt_path = self.worktree_root / module_name
+
+        # Resume: reuse existing worktree if it exists
+        if resume and wt_path.exists():
+            # Check it's a valid worktree
+            check = subprocess.run(
+                ["git", "-C", str(wt_path), "rev-parse", "--is-inside-work-tree"],
+                capture_output=True, text=True,
+            )
+            if check.returncode == 0:
+                print(f"  ♻️  Resume: reusing existing worktree '{module_name}'")
+                self._worktrees[module_name] = str(wt_path)
+                return str(wt_path)
+            else:
+                print(f"  ⚠️  Resume: worktree '{module_name}' exists but invalid, recreating")
+                # Fall through to normal creation
 
         with self._lock:
             # Remove any residue from previous failed attempts
