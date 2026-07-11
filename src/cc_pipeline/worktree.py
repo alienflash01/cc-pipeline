@@ -42,8 +42,8 @@ class WorktreeManager:
 
         with self._lock:
             # Remove any residue from previous failed attempts
-            # Use shutil.rmtree instead of git worktree remove — handles partial/non-worktree dirs
             if wt_path.exists():
+                print(f"  🧹 Worktree '{module_name}': 目录已存在，删除重建")
                 import shutil
                 shutil.rmtree(str(wt_path), ignore_errors=True)
 
