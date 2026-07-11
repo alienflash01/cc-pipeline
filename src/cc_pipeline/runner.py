@@ -87,9 +87,9 @@ class ModuleRunner:
       2. If CC failed / zero-work → skip postcondition, go to retry
       3. If rate-limited → retry without consuming budget
       4. If CC succeeded → evaluate postcondition
-      5. If pass → git checkpoint → next step
-      6. If fail → git rollback → retry (up to step.retry times)
-      7. If retries exhausted → module failed
+      5. If pass → record to state.json → next step
+      6. If fail → retry (up to step.retry times, no rollback)
+      7. If retries exhausted → on_failure jump or module failed
     """
 
     def __init__(
@@ -314,20 +314,25 @@ class ModuleRunner:
                     content = "\n".join(lines[-20:])
                 prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
 
-        # Inject prior step outputs if they exist
+        # Inject prior step outputs if they exist (capped to last 3 files, max 10KB total)
         if pipeline_dir.exists():
-            prior_files = sorted(pipeline_dir.glob("*.json"))
+            prior_files = sorted(pipeline_dir.glob("*.json"))[-3:]  # last 3 files only
             if prior_files:
                 context_lines = ["\n\n--- 前序步骤的上下文 ---"]
+                total_size = 0
                 for f in prior_files:
                     try:
                         content = f.read_text().strip()
                         if content:
+                            total_size += len(content)
+                            if total_size > 10240:  # 10KB cap
+                                context_lines.append(f"[{f.name}]: (truncated, context size limit reached)")
+                                break
                             context_lines.append(f"[{f.name}]:\n{content}")
                     except Exception:
                         import warnings
                         warnings.warn(f"Failed to read context file {f.name}", stacklevel=2)
-                context_lines.append("---\n")
+                context_lines.append("---")
                 prompt += "\n".join(context_lines)
 
         # Inject output write instruction
@@ -388,6 +393,7 @@ class ModuleRunner:
                 result = self.shell_executor.run(
                     command=full_prompt,
                     cwd=self.worktree_path,
+                    timeout=step.timeout,
                 )
                 if result.returncode != 0:
                     if _is_rate_limited(result.stderr):
