@@ -58,3 +58,62 @@ mock 绕过了真实 git/subprocess 错误。每个 mock 测的错误路径，
 3. 新增了 except 块吗？→ 有 → 对应 capsys 测试
 4. 新增了状态变更（status=failed）吗？→ 有 → 终端输出测试
 5. mock 绕过了真实错误链吗？→ 至少 1 个 E2E 用真实 git/subprocess
+
+## 规则 7：所有 subprocess 调用必须 check=True 或 try/except
+
+```python
+# ❌ 差
+result = subprocess.run(["git", "reset", "--hard", tag], capture_output=True)
+# 失败静默，后续操作在脏状态上跑
+
+# ✅ 好
+result = subprocess.run(["git", "reset", "--hard", tag], capture_output=True, text=True)
+if result.returncode != 0:
+    raise RuntimeError(f"git reset failed: {result.stderr.strip()}")
+```
+
+## 规则 8：功能组合矩阵
+
+新功能不仅要测自身行为，还要检查与现有功能的**每种组合**是否定义了行为。
+
+### 组合矩阵模板
+
+| | per_file | retry | on_failure | resume | postcondition |
+|---|:-:|:-:|:-:|:-:|:-:|
+| 新功能 | ✓/✗ | ✓/✗ | ✓/✗ | ✓/✗ | ✓/✗ |
+
+每个 ✓ 必须有测试。每个 ✗ 必须说明"为什么不测"。
+
+### 关键假设审计
+
+每个功能实现时写一个"假设清单"。加新功能时检查：
+
+> 新功能是否打破了已有功能的假设？
+
+典型破裂案例：
+- `on_failure` 假设 step_id 唯一 → `per_file` 展开后 step_id 不唯一 → bug
+- `resume` 假设 step 可用 step_id 标识 → `per_file` 需要 step_id + loop_file → 已修复
+
+### 执行单元 key 一致性
+
+系统中标识一个"执行单元"的 key 必须全局一致：
+
+```
+非 loop step：step_id
+loop step：    step_id + loop_file
+
+所有操作（jump / skip / complete / retry）必须用同一个 key。
+不允许 jump 用 step_id 而 skip 用 step_id + loop_file——不一致就是 bug。
+```
+
+### 新增功能检查清单
+
+```
+□ 与 per_file 组合时行为是否正确？→ 写组合测试
+□ 与 retry 组合时行为是否正确？→ 写组合测试
+□ 与 on_failure 组合时行为是否正确？→ 写组合测试
+□ 与 resume 组合时行为是否正确？→ 写组合测试
+□ 该功能的 key 是否和系统其他部分一致？
+□ 该功能假设 step_id 唯一吗？per_file 展开后是否还成立？
+□ compiled steps 可视化：展开后 step_id 是否唯一？不唯一时搜索逻辑是否正确？
+```

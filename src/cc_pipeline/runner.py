@@ -199,18 +199,16 @@ class ModuleRunner:
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        if self.verbose >= 1:
-                            ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
+                        ts = datetime.now().strftime("%H:%M:%S")
+                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         continue
                     else:
                         self.logger.log_fail(
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
                         )
-                        if self.verbose >= 1:
-                            ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {failure_reason}")
+                        ts = datetime.now().strftime("%H:%M:%S")
+                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
 
                 # Layer 3: CC succeeded → check postcondition (inside while True)
@@ -255,26 +253,29 @@ class ModuleRunner:
                 # Check on_failure jump-back (per-target jump count)
                 target = step.on_failure
                 max_jumps = getattr(step, "on_failure_max_jumps", MAX_ON_FAILURE_JUMPS)
-                jc = jump_counts.get(target, 0)
+                # Key includes loop_file for per_file steps (key consistency rule)
+                target_key = f"{target}/{step.loop_file}" if step.loop_file else target
+                jc = jump_counts.get(target_key, 0)
                 if target and jc < max_jumps:
-                    # Find target step index
+                    # Find target step index — match step_id AND loop_file
                     target_idx = None
                     for j, s in enumerate(self.steps):
-                        if s.step_id == target:
+                        if s.step_id == target and s.loop_file == step.loop_file:
                             target_idx = j
                             break
                     if target_idx is not None:
-                        jump_counts[target] = jc + 1
+                        jump_counts[target_key] = jc + 1
                         self.logger.event(
                             "on_failure_jump",
                             step=step.step_id, attempt=0,
                             info={"from": step.step_id, "to": target,
-                                  "jump": jump_counts[target]},
+                                  "jump": jump_counts[target_key]},
                         )
                         step_idx = target_idx
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target]})")
+                            file_info = f"[{step.loop_file}]" if step.loop_file else ""
+                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id}{file_info} → {target}{file_info} (jump {jump_counts[target_key]})")
                         continue
                 return {
                     "status": "failed",
