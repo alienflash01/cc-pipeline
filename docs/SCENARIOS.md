@@ -189,11 +189,15 @@ P3 [B.c] → PASS
 P3 [C.c] → FAIL（retry 耗尽）
   ↩️ JUMP: P3[C.c] → P2[C.c] (jump 1)    ← 只跳 C.c 的 P2！
 
-P2 [C.c]（重跑）→ PASS                    ← A.c 和 B.c 的 P2 不重跑
+P2 [C.c]（重跑）→ PASS
+P3 [A.c]（重跑）→ PASS                    ← 中间步骤也会重跑
+P3 [B.c]（重跑）→ PASS
 P3 [C.c]（重跑）→ FAIL（retry 耗尽）
   ↩️ JUMP: P3[C.c] → P2[C.c] (jump 2)
 
 P2 [C.c]（重跑）→ PASS
+P3 [A.c]（重跑）→ PASS
+P3 [B.c]（重跑）→ PASS
 P3 [C.c]（重跑）→ PASS
 
 P4 [A.c] → PASS
@@ -203,7 +207,8 @@ P4 [C.c] → PASS
 ```
 
 **关键：**
-- on_failure 跳转精确到文件级——C.c 失败只跳 C.c 的 P2，不影响 A.c 和 B.c
+- on_failure 跳转精确到文件级——C.c 失败只跳 C.c 的 P2，不影响 A.c 和 B.c 的 P2
+- **jump 后从目标 step 顺序执行**——P2[C.c] 和 P3[C.c] 之间的步骤（P3[A.c]、P3[B.c]）也会重跑
 - jump 计数 per-target（P2/C.c 独立计数）
 - retry 预算在每次 jump 后重置（新 step 获得新的 retry 预算）
 
@@ -404,7 +409,7 @@ P4 → PASS
 🔀 Merged cc-auto/auth → main
 ```
 
-AI 解冲突后用 postcondition 验证。解不了回退人工。
+AI 解冲突后验证无冲突标记残留。解不了回退人工。
 
 ### 9d. commit message 模板
 
@@ -469,7 +474,7 @@ P2 [B.c] START → CC 执行 30s 超时
 P2 [B.c] RETRY → CC 执行成功 → PASS
 ```
 
-**per_file 场景：一个文件超时不阻塞其他文件**
+**per_file 场景：一个文件超时导致 module 失败**
 ```
 P2 [A.c] → PASS
 P2 [B.c] → 超时 → retry → 超时 → FAIL
@@ -505,6 +510,7 @@ P3 [C.c] → CC 写入 .pipeline/eval-C.c.json
 | `{module}` | module.name | ✅ 总是 |
 | `{source_dir}` | module.source_dir | ✅ 总是 |
 | `{source_files}` | 文件列表（逗号分隔） | ✅ 总是 |
+| `{spec_id}` | module.spec_id | ✅ 总是 |
 | `{output}` | step.output | ✅ 总是 |
 | `{file}` | loop 当前文件 | ⚠️ 仅 loop:per_file |
 | `{assert_macro}` | source_files dict | ⚠️ 仅 loop:per_file |
@@ -626,7 +632,32 @@ $ cc-pipeline init
 
 ---
 
-## 附录：快速行为对照表
+## 附录 A：其他功能速查
+
+| 功能 | 说明 |
+|------|------|
+| `judge` executor | 只读 CC 模式（Read+Bash），用于评估/打分 |
+| `depends_on` | 步骤间依赖排序（拓扑排序） |
+| `prompt_file` | step 从外部 .md 文件加载 prompt（CWD + config 目录双重查找） |
+| `output_prompt` | 自定义 output 注入文本（替代框架默认中文指令） |
+| `model`（per-step） | 步骤级模型覆盖（优先级：step > --model > config > CC 默认） |
+| `contains('text')` | postcondition expect 操作符 |
+| `&&` / `\|\|` | postcondition expect 复合表达式 |
+| `{.pipeline/file}` | prompt 中引用 .pipeline/ 下文件内容 |
+| progress.md 注入 | CC 自动看到前序步骤的进度记录（Anthropic harness pattern） |
+| 前序步骤输出注入 | CC 自动看到前序步骤的 JSON 输出（最近 3 个文件，上限 10KB） |
+| `--daemon` | 后台守护进程运行 + PID 文件 |
+| `check` 命令 | 环境检测（Python/Git/CC/磁盘）+ 配置验证 |
+| `clean` 命令 | 清理 cc-auto worktrees + branches + tags |
+| `transcript` 命令 | 格式化查看执行日志（prompt + CC 输出 + 状态事件） |
+| `report` 命令 | 生成报告（md / html，html 含 Mermaid DAG） |
+| `stop` 命令 | 停止 daemon + 杀 CC 子进程 |
+| `status` 命令 | 查看运行状态 + 列出可用 run |
+| preflight 检查 | 运行前环境警告（CC CLI / repo / branch / worktree_root） |
+| Ctrl+C / SIGTERM | 优雅关闭：杀 CC 子进程 + state 落盘 + 可 resume |
+| postcondition 诊断 | 失败时显示 git status + 文件后缀提示 |
+
+## 附录 B：快速行为对照表
 
 | 我想... | 配置 | 行为 |
 |---------|------|------|
