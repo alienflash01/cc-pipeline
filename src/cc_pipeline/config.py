@@ -74,7 +74,7 @@ class PipelineConfig:
 # warning and is silently ignored. Kept module-level so it is testable.
 _KNOWN_STEP_FIELDS = {
     "id", "executor", "prompt", "prompt_file", "model",
-    "loop", "retry", "output", "depends_on",
+    "loop", "retry", "max_retries", "output", "depends_on",
     "postcondition", "timeout",
     "on_failure", "on_failure_max_jumps", "output_prompt",
 }
@@ -161,7 +161,7 @@ def load_config(path: str) -> PipelineConfig:
             executor=step_raw.get("executor", "claude-code"),
             prompt=step_raw.get("prompt", ""),
             loop=step_raw.get("loop"),
-            retry=step_raw.get("retry"),
+            retry=step_raw.get("retry") or step_raw.get("max_retries"),  # max_retries as alias
             output=step_raw.get("output"),
             depends_on=step_raw.get("depends_on"),
             postcondition=step_raw.get("postcondition"),
