@@ -81,11 +81,14 @@ class TestOutputInstructionInjection:
             mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             runner._execute_step(step)
 
-        actual_prompt = mock_run.call_args[0][0]
-        # Find the prompt in the cmd list (it's the arg after -p)
-        cmd_list = mock_run.call_args[0][0]
-        prompt_idx = cmd_list.index("-p") + 1 if "-p" in cmd_list else -1
-        actual_prompt = cmd_list[prompt_idx] if prompt_idx > 0 else ""
+        actual_prompt = ""
+        # Find the CC call (not git status) in call_args_list
+        for call in mock_run.call_args_list:
+            cmd = call[0][0] if call[0] else []
+            if isinstance(cmd, list) and "-p" in cmd:
+                prompt_idx = cmd.index("-p") + 1
+                actual_prompt = cmd[prompt_idx] if prompt_idx < len(cmd) else ""
+                break
 
         assert ".pipeline/scaffold.json" in actual_prompt
         assert "JSON" in actual_prompt or "json" in actual_prompt.lower()
@@ -149,9 +152,13 @@ class TestContextInjectionFromPriorSteps:
             mock_run.return_value = MagicMock(returncode=0, stdout="ok", stderr="")
             runner._execute_step(step)
 
-        cmd_list = mock_run.call_args[0][0]
-        prompt_idx = cmd_list.index("-p") + 1 if "-p" in cmd_list else -1
-        actual_prompt = cmd_list[prompt_idx] if prompt_idx > 0 else ""
+        actual_prompt = ""
+        for call in mock_run.call_args_list:
+            cmd = call[0][0] if call[0] else []
+            if isinstance(cmd, list) and "-p" in cmd:
+                prompt_idx = cmd.index("-p") + 1
+                actual_prompt = cmd[prompt_idx] if prompt_idx < len(cmd) else ""
+                break
 
         # Prompt should mention the prior output file
         assert "scaffold.json" in actual_prompt

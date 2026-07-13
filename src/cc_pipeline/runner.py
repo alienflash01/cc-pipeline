@@ -402,6 +402,12 @@ class ModuleRunner:
                     cwd=self.worktree_path,
                     timeout=step.timeout,
                 )
+                # Audit: log shell command execution
+                self.logger.log_command_audit(
+                    step=step.step_id, command=full_prompt,
+                    cwd=self.worktree_path, executor="shell",
+                    returncode=result.returncode,
+                )
                 if result.returncode != 0:
                     if _is_rate_limited(result.stderr):
                         return ExecResult(ExecOutcome.RATE_LIMITED, result, "Shell rate limited")
@@ -472,6 +478,9 @@ class ModuleRunner:
 
         # Success
         self.logger.log_cc_result(step=step.step_id, cc_result=cc_result)
+        # Audit: log file changes after CC execution
+        changes = self._detect_file_changes()
+        self.logger.log_file_changes(step=step.step_id, changes=changes)
         if self.verbose >= 2 and cc_result.stdout:
             ts = datetime.now().strftime("%H:%M:%S")
             print(f"  [{ts}]   CC OUTPUT (exit {cc_result.returncode}):")

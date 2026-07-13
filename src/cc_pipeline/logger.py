@@ -59,3 +59,24 @@ class Logger:
             stdout=(cc_result.stdout or "")[:20000],
             stderr=(cc_result.stderr or "")[:10000],
         )
+
+    def log_command_audit(self, step: str, command: str, cwd: str, executor: str,
+                          returncode: int = 0, **extra) -> None:
+        """Log a command execution for audit trail.
+
+        Records what command was run, where, by which executor, and the result.
+        """
+        self.event(
+            "command_audit",
+            step=step,
+            executor=executor,
+            command=command[:500],
+            cwd=cwd,
+            returncode=returncode,
+            **extra,
+        )
+
+    def log_file_changes(self, step: str, changes: list[str]) -> None:
+        """Log git status changes after CC execution for audit trail."""
+        if changes:
+            self.event("file_changes", step=step, changes=changes)
