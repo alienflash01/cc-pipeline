@@ -148,7 +148,7 @@ class ModuleRunner:
                 if self.verbose >= 1:
                     file_info = f" [{step.loop_file}]" if step.loop_file else ""
                     ts = datetime.now().strftime("%H:%M:%S")
-                    print(f"  [{ts}] [{self.module_name}] {step.step_id:12} START{file_info}")
+                    print(f"  [{ts}] [{self.module_name}]{file_info} {step.step_id} START")
 
                 # -vv: print full prompt or shell command
                 if self.verbose >= 2:
@@ -169,7 +169,7 @@ class ModuleRunner:
                     if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=f"Rate limited (free retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES}): {exec_result.reason}",
@@ -200,7 +200,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
+                        print(f"  [{ts}] [{self.module_name}] {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -208,7 +208,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {failure_reason}")
+                        print(f"  [{ts}] [{self.module_name}] {step.step_id} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
 
                 # Layer 3: CC succeeded → check postcondition (inside while True)
@@ -223,7 +223,7 @@ class ModuleRunner:
                     if self.verbose >= 1:
                         file_info = f" [{step.loop_file}]" if step.loop_file else ""
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}] {step.step_id:12} PASS{file_info}")
+                        print(f"  [{ts}] [{self.module_name}]{file_info} {step.step_id} PASS")
                     break
                 else:
                     if retry_budget > 0:
@@ -234,7 +234,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -243,7 +243,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id:12} ❌ FAIL — {pc_result.reason}")
+                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ❌ FAIL — {pc_result.reason}")
                             self._print_postcondition_diag(pc_result)
                         break
 
