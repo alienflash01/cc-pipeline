@@ -23,6 +23,7 @@ class PipelineStep:
     on_failure: str | None = None  # jump-back target step_id on failure
     on_failure_max_jumps: int = 2  # max jump-back count
     output_prompt: str | None = None  # custom output injection text (default: framework's)
+    modules: list | None = None  # restrict to these module names (None = all modules)
 
 
 def _resolve_worktree_root(worktree_root: str, repo: str) -> str:
@@ -171,6 +172,7 @@ def load_config(path: str) -> PipelineConfig:
             on_failure=step_raw.get("on_failure"),
             on_failure_max_jumps=step_raw.get("on_failure_max_jumps", 2),
             output_prompt=step_raw.get("output_prompt"),
+            modules=step_raw.get("modules"),
         )
         # Warn when both prompt and prompt_file are set (prompt wins)
         if step.prompt and step.prompt_file:

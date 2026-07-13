@@ -87,9 +87,20 @@ class PipelineCompiler:
             **module.variables,
         }
 
-        # Compile steps
+        # Compile steps (filter by modules if configured)
         compiled: list[CompiledStep] = []
         for step in self.config.pipeline:
+            # Check if this step applies to the current module
+            if step.modules is not None and module_name not in step.modules:
+                # Validate that referenced modules exist (fail-fast)
+                all_module_names = {m.name for m in self.config.modules}
+                for m in step.modules:
+                    if m not in all_module_names:
+                        raise ValueError(
+                            f"Step '{step.id}': modules references unknown module '{m}'"
+                        )
+                continue  # skip this step for this module
+
             retry = step.retry if step.retry is not None else self.config.max_retries
 
             # Warn: prompt uses {file} but step has no loop

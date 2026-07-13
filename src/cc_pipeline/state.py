@@ -114,6 +114,27 @@ class StateManager:
                 return set()
             return set(mods[module_name].get("completed_steps", []))
 
+    def clear_step_completed(self, module_name: str, step_id: str, loop_file: str = "") -> None:
+        """Remove a step from completed_steps (when on_failure jump invalidates it)."""
+        key = f"{step_id}/{loop_file}" if loop_file else step_id
+        with self._lock:
+            if not self.state_file.exists():
+                return
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                return
+            mods = state.get("modules", {})
+            if module_name not in mods:
+                return
+            completed = mods[module_name].get("completed_steps", [])
+            if key in completed:
+                completed.remove(key)
+            state["saved_at"] = datetime.now().isoformat()
+            with open(self.state_file, "w") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+
     def set_run_id(self, run_id: str) -> None:
         """Set run_id in state file (idempotent, thread-safe)."""
         with self._lock:

@@ -265,6 +265,12 @@ class ModuleRunner:
                             break
                     if target_idx is not None:
                         jump_counts[target_key] = jc + 1
+                        # Clear completed marks from jump target onwards
+                        # (jump invalidates all steps from target forward)
+                        for s in self.steps[target_idx:]:
+                            if self.state_manager:
+                                self.state_manager.clear_step_completed(
+                                    self.module_name, s.step_id, s.loop_file or "")
                         self.logger.event(
                             "on_failure_jump",
                             step=step.step_id, attempt=0,
