@@ -450,9 +450,6 @@ def _cmd_run(args) -> int:
         atexit.register(lambda: new_stdout.close())
 
     # Install signal handler for graceful shutdown
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGINT, _signal_handler)
-
     # Override concurrency if specified
     if args.concurrency is not None:
         config.concurrency = args.concurrency
@@ -460,7 +457,7 @@ def _cmd_run(args) -> int:
     # Resolve model: --model > config.model > None
     cc_model = args.model or config.model or None
 
-    # Run orchestrator (checks _shutdown_requested between modules)
+    # Run orchestrator (checks shutdown between modules)
     verbose = getattr(args, "verbose", 0)
     if verbose >= 1:
         level = "steps + prompts/CC output" if verbose >= 2 else "step progress"
@@ -473,6 +470,12 @@ def _cmd_run(args) -> int:
         config_path=args.config,
     )
     orch.run_id = now
+
+    # Install signal handler for graceful shutdown (calls orch.request_shutdown)
+    def _orch_signal_handler(signum, frame):
+        orch.request_shutdown()
+    signal.signal(signal.SIGTERM, _orch_signal_handler)
+    signal.signal(signal.SIGINT, _orch_signal_handler)
 
     # Startup banner — printed unconditionally so the terminal is never silent
     # between hitting Enter and the first module finishing (BP-3.1).

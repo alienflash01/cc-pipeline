@@ -7,7 +7,7 @@ from pathlib import Path
 from cc_pipeline.config import PipelineConfig, PipelineStep, Module
 from cc_pipeline.render import render
 
-VALID_EXECUTORS = {"claude-code", "shell", "judge"}
+from cc_pipeline.config import _VALID_EXECUTORS as VALID_EXECUTORS
 
 
 @dataclass

@@ -63,13 +63,8 @@ class TestGracefulShutdown:
             call_count[0] += 1
             result = original_run_module(mod_name)
             if call_count[0] >= 1:
-                import cc_pipeline.cli as cli_mod
-                cli_mod._shutdown_requested = True
+                orch.request_shutdown()
             return result
-
-        # Reset global flag
-        import cc_pipeline.cli as cli_mod
-        cli_mod._shutdown_requested = False
 
         with patch.object(orch, "_run_module", side_effect=mock_run_module):
             results = orch.run()
@@ -79,9 +74,6 @@ class TestGracefulShutdown:
         skipped = [r for r in results if r.get("status") == "skipped"]
         assert len(passed) == 1
         assert len(skipped) == 2
-
-        # Reset global flag
-        cli_mod._shutdown_requested = False
 
     def test_no_shutdown_runs_all(self, git_repo, tmp_path):
         """Without shutdown signal, all modules run normally."""
@@ -106,9 +98,6 @@ class TestGracefulShutdown:
         )
 
         orch = Orchestrator(config=config, run_dir=str(tmp_path / "runs"))
-
-        import cc_pipeline.cli as cli_mod
-        cli_mod._shutdown_requested = False
 
         results = orch.run()
         assert len(results) == 2
@@ -137,11 +126,7 @@ class TestGracefulShutdown:
         )
 
         orch = Orchestrator(config=config, run_dir=str(tmp_path / "runs"))
-
-        import cc_pipeline.cli as cli_mod
-        cli_mod._shutdown_requested = True  # shutdown before any module
+        orch.request_shutdown()  # shutdown before any module
 
         results = orch.run()
         assert all(r["status"] == "skipped" for r in results)
-
-        cli_mod._shutdown_requested = False

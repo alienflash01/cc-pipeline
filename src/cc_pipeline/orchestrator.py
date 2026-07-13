@@ -54,12 +54,6 @@ class Orchestrator:
 
         # Shutdown flag (self-contained, no cli import)
         self._shutdown_requested = False
-        # Reset legacy global flag to avoid test pollution
-        try:
-            import cc_pipeline.cli as _cli_mod
-            _cli_mod._shutdown_requested = False
-        except Exception:
-            pass
 
         # Shared state manager (thread-safe)
         from cc_pipeline.state import StateManager
@@ -90,15 +84,8 @@ class Orchestrator:
 
     @property
     def shutdown_requested(self) -> bool:
-        """Check if shutdown has been requested (self flag or legacy cli flag)."""
-        if self._shutdown_requested:
-            return True
-        # Backward compat: check legacy cli module flag
-        try:
-            import cc_pipeline.cli as cli_mod
-            return getattr(cli_mod, "_shutdown_requested", False)
-        except Exception:
-            return False
+        """Check if shutdown has been requested."""
+        return self._shutdown_requested
 
     def run(self) -> list[dict]:
         """Run all modules in parallel.

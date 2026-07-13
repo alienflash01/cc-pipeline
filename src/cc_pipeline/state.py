@@ -16,6 +16,19 @@ class StateManager:
         self.state_file = self.run_dir / "orchestrator-state.json"
         self._lock = threading.Lock()
 
+    def _atomic_write(self, data: dict) -> None:
+        """Write state JSON atomically (temp file + rename)."""
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(
+            mode="w", dir=str(self.run_dir), suffix=".tmp",
+            prefix=".state-", delete=False
+        ) as tmp:
+            json.dump(data, tmp, indent=2, ensure_ascii=False)
+            tmp.flush()
+            os.fsync(tmp.fileno())
+            tmp_path = tmp.name
+        os.replace(tmp_path, str(self.state_file))
+
     def save(self, run_id: str, modules: dict) -> None:
         """Save full orchestrator state.
 
@@ -29,8 +42,7 @@ class StateManager:
                 "saved_at": datetime.now().isoformat(),
                 "modules": modules,
             }
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=2, ensure_ascii=False)
+            self._atomic_write(state)
 
     def load(self) -> dict | None:
         """Load previously saved state.
@@ -68,8 +80,7 @@ class StateManager:
                 state["modules"][module_name] = {}
             state["modules"][module_name].update(kwargs)
             state["saved_at"] = datetime.now().isoformat()
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=2, ensure_ascii=False)
+            self._atomic_write(state)
 
     def mark_step_completed(self, module_name: str, step_id: str, loop_file: str = "") -> None:
         """Mark a step as completed for resume support.
@@ -96,8 +107,7 @@ class StateManager:
             if key not in completed:
                 completed.append(key)
             state["saved_at"] = datetime.now().isoformat()
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=2, ensure_ascii=False)
+            self._atomic_write(state)
 
     def get_completed_steps(self, module_name: str) -> set[str]:
         """Get completed steps for a module (for resume)."""
@@ -132,8 +142,7 @@ class StateManager:
             if key in completed:
                 completed.remove(key)
             state["saved_at"] = datetime.now().isoformat()
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=2, ensure_ascii=False)
+            self._atomic_write(state)
 
     def set_run_id(self, run_id: str) -> None:
         """Set run_id in state file (idempotent, thread-safe)."""
@@ -149,8 +158,7 @@ class StateManager:
                 state = {"run_id": run_id, "saved_at": "", "modules": {}}
             state["run_id"] = run_id
             state["saved_at"] = datetime.now().isoformat()
-            with open(self.state_file, "w") as f:
-                json.dump(state, f, indent=2, ensure_ascii=False)
+            self._atomic_write(state)
 
     def get_failed_modules(self) -> list[str]:
         """Return list of module names that failed.

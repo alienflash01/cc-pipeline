@@ -33,9 +33,11 @@ class ExecOutcome(Enum):
     UNKNOWN_ERROR = "unknown_error"
 
 
-# CO-style rate limit protection
-MAX_FREE_RATE_LIMIT_RETRIES = 3   # max free retries before consuming budget
-RATE_LIMIT_BACKOFF_SECS = 30      # wait between rate-limit retries
+from cc_pipeline.constants import (
+    MAX_FREE_RATE_LIMIT_RETRIES, RATE_LIMIT_BACKOFF_SECS,
+    DEFAULT_MAX_ON_FAILURE_JUMPS,
+    PROGRESS_MD_MAX_LINES, CONTEXT_MAX_FILES, CONTEXT_MAX_SIZE_BYTES,
+)
 
 
 @dataclass
@@ -123,7 +125,7 @@ class ModuleRunner:
         Returns:
             Dict with keys: status, module, steps_completed, steps_total.
         """
-        MAX_ON_FAILURE_JUMPS = 2  # default, overridden by step.on_failure_max_jumps
+        MAX_ON_FAILURE_JUMPS = DEFAULT_MAX_ON_FAILURE_JUMPS  # default, overridden by step.on_failure_max_jumps
         total = len(self.steps)
         completed = 0
 
@@ -317,13 +319,13 @@ class ModuleRunner:
             if content:
                 # Cap to last 20 lines to prevent unbounded growth
                 lines = content.splitlines()
-                if len(lines) > 20:
+                if len(lines) > PROGRESS_MD_MAX_LINES:
                     content = "\n".join(lines[-20:])
                 prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
 
         # Inject prior step outputs if they exist (capped to last 3 files, max 10KB total)
         if pipeline_dir.exists():
-            prior_files = sorted(pipeline_dir.glob("*.json"))[-3:]  # last 3 files only
+            prior_files = sorted(pipeline_dir.glob("*.json"))[-CONTEXT_MAX_FILES:]  # last 3 files only
             if prior_files:
                 context_lines = ["\n\n--- 前序步骤的上下文 ---"]
                 total_size = 0
@@ -332,7 +334,7 @@ class ModuleRunner:
                         content = f.read_text().strip()
                         if content:
                             total_size += len(content)
-                            if total_size > 10240:  # 10KB cap
+                            if total_size > CONTEXT_MAX_SIZE_BYTES:  # 10KB cap
                                 context_lines.append(f"[{f.name}]: (truncated, context size limit reached)")
                                 break
                             context_lines.append(f"[{f.name}]:\n{content}")

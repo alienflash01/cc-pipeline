@@ -81,6 +81,9 @@ _KNOWN_STEP_FIELDS = {
 }
 
 
+_VALID_EXECUTORS = {"claude-code", "shell", "judge"}
+
+
 def load_config(path: str) -> PipelineConfig:
     """Load and validate a YAML config file.
     
@@ -341,7 +344,6 @@ def load_config(path: str) -> PipelineConfig:
             )
 
     # Validate executor types (fail early with helpful message)
-    _VALID_EXECUTORS = {"claude-code", "shell", "judge"}
     for step in pipeline:
         if step.executor not in _VALID_EXECUTORS:
             # Suggest closest match
