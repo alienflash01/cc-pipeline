@@ -87,19 +87,22 @@ class PipelineCompiler:
             **module.variables,
         }
 
-        # Compile steps (filter by modules if configured)
-        compiled: list[CompiledStep] = []
+        # Validate modules references exist (fail-fast, once per compile)
+        all_module_names = {m.name for m in self.config.modules}
         for step in self.config.pipeline:
-            # Check if this step applies to the current module
-            if step.modules is not None and module_name not in step.modules:
-                # Validate that referenced modules exist (fail-fast)
-                all_module_names = {m.name for m in self.config.modules}
+            if step.modules is not None:
                 for m in step.modules:
                     if m not in all_module_names:
                         raise ValueError(
                             f"Step '{step.id}': modules references unknown module '{m}'"
                         )
-                continue  # skip this step for this module
+
+        # Compile steps (filter by modules if configured)
+        compiled: list[CompiledStep] = []
+        for step in self.config.pipeline:
+            # Skip steps not meant for this module
+            if step.modules is not None and module_name not in step.modules:
+                continue
 
             retry = step.retry if step.retry is not None else self.config.max_retries
 
