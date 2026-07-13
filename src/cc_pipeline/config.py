@@ -233,11 +233,21 @@ def load_config(path: str) -> PipelineConfig:
                 stacklevel=2,
             )
             variables = {**mod_raw["coverage"], **variables}
+        # Expand glob patterns in source_files
+        import os as _os2
+        source_files_raw = mod_raw.get("source_files", [])
+        config_dir = _os2.path.dirname(_os2.path.abspath(path))
+        source_dir = mod_raw.get("source_dir", "").rstrip("/")
+        source_files_expanded = _expand_source_files(
+            source_files_raw,
+            _os2.path.join(config_dir, source_dir)
+        )
+        
         mod = Module(
             name=mod_raw["name"],
             spec_id=mod_raw.get("spec_id", ""),
             source_dir=mod_raw.get("source_dir", ""),
-            source_files=mod_raw.get("source_files", []),
+            source_files=source_files_expanded,
             variables=variables,
             file_order=mod_raw.get("file_order", "batched"),
         )
@@ -375,3 +385,41 @@ def load_config(path: str) -> PipelineConfig:
         pipeline=pipeline,
         modules=modules,
     )
+
+
+def _expand_source_files(items, source_abs_dir: str):
+    """Expand glob patterns in source_files entries."""
+    import glob as _glob
+    from pathlib import Path as _Path
+    import os as _os
+
+    # Guard: must be a list
+    if not isinstance(items, list):
+        return items
+
+    source_path = _Path(source_abs_dir)
+
+    def _is_glob(s):
+        return any(c in s for c in "*?[]")
+
+    result = []
+    for item in items:
+        if isinstance(item, str):
+            if _is_glob(item):
+                pattern = str(source_path / item)
+                matches = sorted(_os.path.basename(p) for p in _glob.glob(pattern))
+                result.extend(matches)
+            else:
+                result.append(item)
+        elif isinstance(item, dict):
+            path_val = item.get("path", "")
+            if _is_glob(path_val):
+                pattern = str(source_path / path_val)
+                matches = sorted(_os.path.basename(p) for p in _glob.glob(pattern))
+                for m in matches:
+                    result.append({**item, "path": m})
+            else:
+                result.append(item)
+        else:
+            result.append(item)
+    return result
