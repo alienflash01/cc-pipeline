@@ -343,35 +343,38 @@ def load_config(path: str) -> PipelineConfig:
                 stacklevel=2,
             )
 
-    # Validate executor types (fail early with helpful message)
+    # Collect ALL validation errors (not just first) for better UX
+    _errors = []
+
+    # Validate executor types
     for step in pipeline:
         if step.executor not in _VALID_EXECUTORS:
-            # Suggest closest match
             import difflib
             suggestions = difflib.get_close_matches(step.executor, _VALID_EXECUTORS, n=1, cutoff=0.5)
             hint = f" (did you mean '{suggestions[0]}'?)" if suggestions else f" Must be one of: {_VALID_EXECUTORS}"
-            raise ValueError(
-                f"Step '{step.id}': invalid executor '{step.executor}'{hint}"
-            )
+            _errors.append(f"Step '{step.id}': invalid executor '{step.executor}'{hint}")
 
-    # Validate prompt_file paths exist (fail early, not at runtime)
+    # Validate on_failure targets exist
     _all_step_ids = {s.id for s in pipeline}
     for step in pipeline:
-        # Validate on_failure target exists
         if step.on_failure and step.on_failure not in _all_step_ids:
-            raise ValueError(
+            _errors.append(
                 f"Step '{step.id}': on_failure '{step.on_failure}' "
                 f"does not match any step id"
             )
+        # Validate prompt_file exists
         if step.prompt_file:
             from pathlib import Path as _P
             p = _P(step.prompt_file)
             if not p.exists():
                 cfg_dir = _P(path).parent
                 if not (cfg_dir / step.prompt_file).exists():
-                    raise FileNotFoundError(
-                        f"prompt_file not found: {step.prompt_file}"
-                    )
+                    _errors.append(f"prompt_file not found: {step.prompt_file}")
+
+    # Raise all errors at once
+    if _errors:
+        msg = "\n".join(f"  {i+1}. {e}" for i, e in enumerate(_errors))
+        raise ValueError(f"Config validation failed ({len(_errors)} error(s)):\n{msg}")
 
     return PipelineConfig(
         repo=raw["repo"],

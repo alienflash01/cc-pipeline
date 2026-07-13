@@ -629,8 +629,7 @@ def _cmd_resume(args) -> int:
 
 
 def _cmd_status(args) -> int:
-    """Show pipeline status."""
-    # Use custom run_dir if provided, otherwise default
+    """Show pipeline status — reads state.json for meaningful info."""
     if args.run_dir:
         base = Path(args.run_dir)
     else:
@@ -639,24 +638,37 @@ def _cmd_status(args) -> int:
     if args.run_id:
         run_dir = base / args.run_id
     else:
-        if not base.exists():
+        if not base.exists() or not any(base.iterdir()):
             print("No runs found.")
             print("\n  💡 Getting started:")
             print("     1. cc-pipeline init          — Generate a config interactively")
             print("     2. cc-pipeline run config.yaml --dry-run   — Preview your pipeline")
             print("     3. cc-pipeline run config.yaml             — Execute")
             return 0
-        runs = sorted(base.iterdir())
-        if not runs:
-            print("No runs found.")
-            print("\n  💡 Getting started:")
-            print("     1. cc-pipeline init          — Generate a config interactively")
-            print("     2. cc-pipeline run config.yaml --dry-run   — Preview your pipeline")
-            print("     3. cc-pipeline run config.yaml             — Execute")
-            return 0
+
+        # Scan runs and read state.json for each
+        runs = sorted(base.iterdir(), reverse=True)[:10]
         print("Recent runs:")
-        for r in runs[-10:]:
-            print(f"  {r.name}")
+        print(f"  {'Run ID':<30s} {'Modules':>10s} {'Status':>10s}")
+        print(f"  {'-'*30} {'-'*10} {'-'*10}")
+        for r in runs:
+            state_file = r / "orchestrator-state.json" if r.is_dir() else None
+            if state_file and state_file.exists():
+                try:
+                    state = _json.loads(state_file.read_text())
+                    mods = state.get("modules", {})
+                    total = len(mods)
+                    passed = sum(1 for m in mods.values() if m.get("status") == "passed")
+                    failed = sum(1 for m in mods.values() if m.get("status") == "failed")
+                    status = "passed" if passed == total and failed == 0 else \
+                             f"{passed}p/{failed}f" if failed > 0 else "running"
+                    run_id = state.get("run_id", r.name)
+                    saved = state.get("saved_at", "")[:19]
+                    print(f"  {run_id:<30s} {total:>10} {status:>10}")
+                except (ValueError, KeyError):
+                    print(f"  {r.name:<30s} {'?':>10} {'?':>10}")
+            elif r.is_dir():
+                print(f"  {r.name:<30s} {'?':>10} {'no state':>10}")
         return 0
 
     if not run_dir.exists():
@@ -939,7 +951,27 @@ def _build_report(run_id: str, timestamp: str, modules: dict, run_dir: Path) -> 
 
 def _cmd_report(args) -> int:
     """Generate a run report (Markdown or HTML) from state + transcripts."""
-    run_dir = Path(args.run_dir)
+    run_dir = Path(args.run_dir) if args.run_dir else None
+
+    # Auto-discover: if no --run-dir, find the most recent run
+    if not run_dir:
+        base = Path("~/.cc-pipeline/runs").expanduser()
+        if base.exists():
+            candidates = sorted(
+                [d for d in base.iterdir() if d.is_dir() and (d / "orchestrator-state.json").exists()],
+                reverse=True,
+            )
+            if candidates:
+                run_dir = candidates[0]
+                print(f"  Using most recent run: {run_dir}")
+            else:
+                print("No runs found with state files.", file=sys.stderr)
+                print("  💡 Run 'cc-pipeline run config.yaml' first.")
+                return 1
+        else:
+            print("No runs directory found.", file=sys.stderr)
+            return 1
+
     state_file = run_dir / "orchestrator-state.json"
 
     if not state_file.exists():
