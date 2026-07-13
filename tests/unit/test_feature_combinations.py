@@ -89,11 +89,9 @@ class TestPerFileOnFailureCombination:
         # The bug was: jump went to P3[A.c] (index 0), causing A.c and B.c to re-run.
         p3_executed = [e for e in executed if e == "echo P3"]
         # Total P3 count: initial 3 (A,B,C) + 2 jumps to P3[C.c] = 5
-        # But with the bug: jump to P3[A.c] → runs A,B,C → 3 extra each time
-        # Fix works if jump count is reasonable (not 9+)
-        assert len(p3_executed) <= 5, \
-            f"P3 ran {len(p3_executed)} times — too many, on_failure likely " \
-            f"jumping to P3[A.c] instead of P3[C.c]"
+        assert len(p3_executed) == 5, \
+            f"P3 ran {len(p3_executed)} times — expected exactly 5 " \
+            f"(3 initial + 2 jumps to P3[C.c])"
 
 
 class TestPerFileRetryCombination:
@@ -187,3 +185,58 @@ class TestOnFailureJumpKeyConsistency:
         assert p3_after_fail is not None, "No P3 execution after on_failure jump"
         assert "P3-C" in p3_after_fail, \
             f"on_failure should jump to P3[C.c], but jumped to {p3_after_fail}"
+
+
+class TestOnFailureEdgeCases:
+    """Edge cases for on_failure: max_jumps=0, target not found."""
+
+    def test_max_jumps_zero_disables_jump(self, tmp_path):
+        """on_failure set but max_jumps=0 → no jump, module fails immediately."""
+        from cc_pipeline.executor import ShellResult
+
+        class FakeShell:
+            def run(self, command, cwd, timeout=None):
+                if command == "false":
+                    return ShellResult(1, "", "fail")
+                return ShellResult(0, "ok", "")
+
+        steps = [
+            CompiledStep(
+                step_id="fail_step", executor="shell", rendered_prompt="false", retry=0,
+                on_failure="other_step", on_failure_max_jumps=0,
+            ),
+            CompiledStep(step_id="other_step", executor="shell", rendered_prompt="echo ok", retry=0),
+        ]
+        runner = ModuleRunner(
+            steps, "test", str(tmp_path), str(tmp_path / "runs"),
+            shell_executor=FakeShell(),
+        )
+        result = runner.run()
+
+        assert result["status"] == "failed"
+        assert "other_step" not in result.get("error", "")
+
+    def test_on_failure_target_not_found(self, tmp_path):
+        """on_failure points to nonexistent step → no jump, module fails."""
+        from cc_pipeline.executor import ShellResult
+
+        class FakeShell:
+            def run(self, command, cwd, timeout=None):
+                if command == "false":
+                    return ShellResult(1, "", "fail")
+                return ShellResult(0, "ok", "")
+
+        steps = [
+            CompiledStep(
+                step_id="fail_step", executor="shell", rendered_prompt="false", retry=0,
+                on_failure="NONEXISTENT", on_failure_max_jumps=2,
+            ),
+        ]
+        runner = ModuleRunner(
+            steps, "test", str(tmp_path), str(tmp_path / "runs"),
+            shell_executor=FakeShell(),
+        )
+        result = runner.run()
+
+        assert result["status"] == "failed"
+
