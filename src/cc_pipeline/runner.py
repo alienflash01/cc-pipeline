@@ -363,10 +363,7 @@ class ModuleRunner:
             if output_tpl:
                 prompt += "\n\n---\n" + output_tpl.replace("{output}", safe_output)
             else:
-                prompt += (
-                    "\n\n---\n完成以上任务后，将执行摘要写入 .pipeline/"
-                    f"{safe_output}（JSON 格式，供后续步骤传递上下文）"
-                )
+                prompt += f"\n\nOutput: .pipeline/{safe_output}"
 
         return prompt
 
