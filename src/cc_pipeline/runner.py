@@ -117,6 +117,25 @@ class ModuleRunner:
         self.state_manager = state_manager
         self._shutdown_check = shutdown_check
 
+        # Compute label column width for aligned output
+        # Format: [module] or [module] [file]
+        max_file = 0
+        for s in steps:
+            if s.loop_file:
+                max_file = max(max_file, len(s.loop_file))
+        # [module] + space + [file] with brackets
+        self._label_width = len(self.module_name) + 2  # [name]
+        if max_file > 0:
+            self._label_width += 1 + max_file + 2  # space + [file]
+        # Pad generously so shorter lines still align
+        self._label_fmt = f"{{:<{self._label_width}}}"
+
+    def _label(self, loop_file: str = "") -> str:
+        """Aligned label: [module] or [module] [file]."""
+        if loop_file:
+            return self._label_fmt.format(f"[{self.module_name}] [{loop_file}]")
+        return self._label_fmt.format(f"[{self.module_name}]")
+
     def run(self) -> dict:
         """Execute all steps sequentially. Supports on_failure jump-back.
 
@@ -154,9 +173,8 @@ class ModuleRunner:
                                   loop_file=step.loop_file)
 
                 if self.verbose >= 1:
-                    file_info = f" [{step.loop_file}]" if step.loop_file else ""
                     ts = datetime.now().strftime("%H:%M:%S")
-                    print(f"  [{ts}] [{self.module_name}]{file_info} {step.step_id} START")
+                    print(f"  [{ts}] {self._label(step.loop_file or "")} {step.step_id} START")
 
                 # -vv: print full prompt or shell command
                 if self.verbose >= 2:
@@ -177,7 +195,7 @@ class ModuleRunner:
                     if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
+                            print(f"  [{ts}] {self._label("")} {step.step_id} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=f"Rate limited (free retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES}): {exec_result.reason}",
@@ -208,7 +226,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}] {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
+                        print(f"  [{ts}] {self._label("")} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -216,7 +234,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}] {step.step_id} ❌ FAIL — {failure_reason}")
+                        print(f"  [{ts}] {self._label("")} {step.step_id} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
 
                 # Layer 3: CC succeeded → check postcondition (inside while True)
@@ -229,9 +247,8 @@ class ModuleRunner:
                     completed = step_idx + 1
                     passed = True
                     if self.verbose >= 1:
-                        file_info = f" [{step.loop_file}]" if step.loop_file else ""
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] [{self.module_name}]{file_info} {step.step_id} PASS")
+                        print(f"  [{ts}] {self._label(step.loop_file or "")} {step.step_id} PASS")
                     break
                 else:
                     if retry_budget > 0:
@@ -242,7 +259,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
+                            print(f"  [{ts}] {self._label("")} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -251,7 +268,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] [{self.module_name}] {step.step_id} ❌ FAIL — {pc_result.reason}")
+                            print(f"  [{ts}] {self._label("")} {step.step_id} ❌ FAIL — {pc_result.reason}")
                             self._print_postcondition_diag(pc_result)
                         break
 
@@ -288,8 +305,7 @@ class ModuleRunner:
                         step_idx = target_idx
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            file_info = f"[{step.loop_file}]" if step.loop_file else ""
-                            print(f"  [{ts}] [{self.module_name}] ↩️  JUMP: {step.step_id}{file_info} → {target}{file_info} (jump {jump_counts[target_key]})")
+                            print(f"  [{ts}] {self._label(step.loop_file or "")} ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target_key]})")
                         continue
                 return {
                     "status": "failed",
@@ -506,7 +522,7 @@ class ModuleRunner:
 
         # Always print postcondition command (not just verbose)
         ts = datetime.now().strftime("%H:%M:%S")
-        print(f"  [{ts}] [{self.module_name}] postcondition: {shell[:100]}")
+        print(f"  [{ts}] {self._label("")} postcondition: {shell[:100]}")
 
         result = eval_postcondition(
             shell=shell,
@@ -518,9 +534,9 @@ class ModuleRunner:
         if not result.passed:
             ts = datetime.now().strftime("%H:%M:%S")
             stdout_preview = (result.stdout or "")[:200]
-            print(f"  [{ts}] [{self.module_name}] postcondition FAIL: {result.reason}")
+            print(f"  [{ts}] {self._label("")} postcondition FAIL: {result.reason}")
             if stdout_preview:
-                print(f"  [{ts}] [{self.module_name}]   stdout: {stdout_preview}")
+                print(f"  [{ts}] {self._label("")}   stdout: {stdout_preview}")
 
         return result
 
