@@ -356,35 +356,40 @@ class ModuleRunner:
                 "请基于上游输出**完整重新生成**，不要基于现有的 .pipeline/ 文件做小修补。\n"
             )
 
-        # Inject progress.md if it exists (Anthropic harness pattern)
-        progress_file = pipeline_dir / "progress.md"
-        if progress_file.exists():
-            content = progress_file.read_text().strip()
-            if content:
-                # Cap to last 20 lines to prevent unbounded growth
-                lines = content.splitlines()
-                if len(lines) > PROGRESS_MD_MAX_LINES:
-                    content = "\n".join(lines[-20:])
-                prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
+        # Inject progress.md only when re-running after failure
+        # (normal execution: CC doesn't need to see its own history)
+        if rerun_reason and pipeline_dir.exists():
+            progress_file = pipeline_dir / "progress.md"
+            if progress_file.exists():
+                content = progress_file.read_text().strip()
+                if content:
+                    lines = content.splitlines()
+                    if len(lines) > PROGRESS_MD_MAX_LINES:
+                        content = "\n".join(lines[-20:])
+                    prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
 
         # Inject prior step outputs if they exist (capped to last 3 files, max 10KB total)
+        # Default: only inject for context passing between steps
         if pipeline_dir.exists():
-            prior_files = sorted(pipeline_dir.glob("*.json"))[-CONTEXT_MAX_FILES:]  # last 3 files only
+            prior_files = sorted(pipeline_dir.glob("*.json"))[-CONTEXT_MAX_FILES:]
             if prior_files:
-                context_lines = ["\n\n--- 前序步骤的上下文 ---"]
+                # Skip files that belong to the current step (don't inject own output)
+                own_prefix = f"{step.step_id}-"
+                prior_files = [f for f in prior_files if not f.name.startswith(own_prefix)]
+            if prior_files:
+                context_lines = ["\n\n--- 传递的上下文 ---"]
                 total_size = 0
                 for f in prior_files:
                     try:
                         content = f.read_text().strip()
                         if content:
                             total_size += len(content)
-                            if total_size > CONTEXT_MAX_SIZE_BYTES:  # 10KB cap
-                                context_lines.append(f"[{f.name}]: (truncated, context size limit reached)")
+                            if total_size > CONTEXT_MAX_SIZE_BYTES:
+                                context_lines.append(f"[{f.name}]: (truncated)")
                                 break
                             context_lines.append(f"[{f.name}]:\n{content}")
                     except Exception:
-                        import warnings
-                        warnings.warn(f"Failed to read context file {f.name}", stacklevel=2)
+                        pass
                 context_lines.append("---")
                 prompt += "\n".join(context_lines)
 

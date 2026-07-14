@@ -135,7 +135,7 @@ class TestProgressFileAccumulates:
 class TestProgressVisibleToNextCC:
     """Progress.md content is injected into next CC's prompt."""
 
-    def test_progress_injected_into_prompt(self, git_repo):
+    def test_progress_not_injected_by_default(self, git_repo):
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep
         from cc_pipeline.executor import CCResult
@@ -171,5 +171,5 @@ class TestProgressVisibleToNextCC:
 
         assert len(received_prompts) == 1
         prompt = received_prompts[0]
-        assert "progress" in prompt.lower() or "PASS" in prompt
-        assert "scaffold" in prompt  # prior progress visible
+        assert "progress.md" not in prompt  # not injected by default
+        assert "scaffold" not in prompt  # prior progress not injected by default visible

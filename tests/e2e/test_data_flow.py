@@ -86,7 +86,7 @@ class TestScaffoldWritesOutputFile:
 class TestGenerateReadsPriorContext:
     """Generate step receives scaffold's output in its prompt."""
 
-    def test_generate_prompt_contains_scaffold_data(self, real_repo, tmp_path):
+    def test_generate_prompt_no_prior_injection(self, real_repo, tmp_path):
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.executor import CCExecutor
         from cc_pipeline.compiler import CompiledStep

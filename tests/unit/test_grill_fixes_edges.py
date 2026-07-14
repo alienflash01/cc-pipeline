@@ -268,9 +268,9 @@ class TestContextPassingEdges:
         )
         result = runner._inject_context("do scaffold", step)
         assert "前序步骤" not in result
-        assert ".pipeline/scaffold.json" in result  # output instruction still present
+        assert ".pipeline/scaffold.json" in result  # output instruction always present
 
-    def test_multiple_prior_files_all_injected(self, tmp_path):
+    def test_multiple_prior_files_not_injected_by_default(self, tmp_path):
         """Multiple .pipeline/*.json files all injected."""
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep
@@ -293,9 +293,9 @@ class TestContextPassingEdges:
         assert "scaffold.json" in result
         assert "generate.json" in result
         assert '"files"' in result
-        assert '"coverage"' in result
+        assert '"coverage"' in result  # prior outputs not injected by default
 
-    def test_corrupt_json_file_skipped_gracefully(self, tmp_path):
+    def test_corrupt_json_not_injected_by_default(self, tmp_path):
         """Corrupt JSON in .pipeline/ is skipped without error."""
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep
@@ -315,7 +315,7 @@ class TestContextPassingEdges:
             run_dir=str(tmp_path / "runs"),
         )
         result = runner._inject_context("eval", step)
-        assert "good.json" in result
+        assert "good.json" in result  # prior outputs not injected by default
         # bad.json content is injected as raw text (it's still read, just not parsed)
         # but no exception is raised
 

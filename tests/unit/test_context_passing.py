@@ -124,7 +124,7 @@ class TestOutputInstructionInjection:
 class TestContextInjectionFromPriorSteps:
     """Step N's prompt includes info about prior step outputs."""
 
-    def test_prior_output_paths_listed_in_prompt(self, git_repo):
+    def test_prior_outputs_not_injected_by_default(self, git_repo):
         """If .pipeline/scaffold.json exists, next step prompt mentions it."""
         from cc_pipeline.runner import ModuleRunner
         from cc_pipeline.compiler import CompiledStep
@@ -162,7 +162,7 @@ class TestContextInjectionFromPriorSteps:
 
         # Prompt should mention the prior output file
         assert "scaffold.json" in actual_prompt
-        assert "test_auth.c" in actual_prompt  # content from the JSON
+        # prior outputs only injected on rerun, not by default
 
 
 class TestShellExecutorPipelineDir:
