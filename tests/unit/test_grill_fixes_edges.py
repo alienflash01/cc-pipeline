@@ -290,10 +290,10 @@ class TestContextPassingEdges:
             run_dir=str(tmp_path / "runs"),
         )
         result = runner._inject_context("evaluate", step)
-        assert "scaffold.json" in result
-        assert "generate.json" in result
-        assert '"files"' in result
-        assert '"coverage"' in result  # prior outputs not injected by default
+        assert "scaffold.json" not in result
+        assert "generate.json" not in result
+        assert '"files"' not in result
+        assert '"coverage"' not in result  # prior outputs not injected by default
 
     def test_corrupt_json_not_injected_by_default(self, tmp_path):
         """Corrupt JSON in .pipeline/ is skipped without error."""
@@ -315,7 +315,7 @@ class TestContextPassingEdges:
             run_dir=str(tmp_path / "runs"),
         )
         result = runner._inject_context("eval", step)
-        assert "good.json" in result  # prior outputs not injected by default
+        assert "good.json" not in result  # prior outputs not injected by default
         # bad.json content is injected as raw text (it's still read, just not parsed)
         # but no exception is raised
 

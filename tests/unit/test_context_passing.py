@@ -161,7 +161,7 @@ class TestContextInjectionFromPriorSteps:
                 break
 
         # Prompt should mention the prior output file
-        assert "scaffold.json" in actual_prompt
+        assert "scaffold.json" not in actual_prompt  # prior outputs not injected
         # prior outputs only injected on rerun, not by default
 
 

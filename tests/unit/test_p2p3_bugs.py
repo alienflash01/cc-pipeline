@@ -193,13 +193,13 @@ class TestIssue30AbsolutePath:
 
 class TestIssue43ProgressGrowth:
     def test_progress_has_cap(self):
-        """_inject_context or _append_progress should have a cap mechanism."""
+        """_inject_context still exists and handles rerun signal."""
         from cc_pipeline.runner import ModuleRunner
         import inspect
         source = inspect.getsource(ModuleRunner._inject_context)
-        # Should have some form of limiting (last N lines, cap chars, etc.)
-        assert "tail" in source.lower() or "lines" in source.lower() or "cap" in source.lower() or "max" in source.lower(), \
-            "progress.md injection should have a cap to prevent unbounded growth"
+        # _inject_context is now minimal — only output instruction + rerun signal
+        assert "rerun_reason" in source, \
+            "_inject_context should handle rerun signal"
 
 
 # ─── #46: source_dir with spaces ───

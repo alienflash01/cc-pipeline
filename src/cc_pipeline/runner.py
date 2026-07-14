@@ -340,13 +340,11 @@ class ModuleRunner:
         return pd
 
     def _inject_context(self, prompt: str, step: CompiledStep, rerun_reason: str = "") -> str:
-        """Inject prior step outputs + progress + output instruction into prompt.
+        """Inject output write instruction + rerun signal (if applicable).
 
-        If rerun_reason is set (on_failure jump), adds a clear signal that this
-        step is being re-executed because downstream failed.
+        Context injection is minimal by design — users control upstream context
+        via {prev_output_path} / {current_output_path} in their prompts.
         """
-        pipeline_dir = Path(self.worktree_path) / ".pipeline"
-
         # If this is a re-run after downstream failure, warn CC clearly
         if rerun_reason:
             prompt += (
@@ -355,43 +353,6 @@ class ModuleRunner:
                 "你的上一轮输出被下游步骤拒绝了。\n"
                 "请基于上游输出**完整重新生成**，不要基于现有的 .pipeline/ 文件做小修补。\n"
             )
-
-        # Inject progress.md only when re-running after failure
-        # (normal execution: CC doesn't need to see its own history)
-        if rerun_reason and pipeline_dir.exists():
-            progress_file = pipeline_dir / "progress.md"
-            if progress_file.exists():
-                content = progress_file.read_text().strip()
-                if content:
-                    lines = content.splitlines()
-                    if len(lines) > PROGRESS_MD_MAX_LINES:
-                        content = "\n".join(lines[-20:])
-                    prompt += f"\n\n--- 进度记录 ---\n{content}\n---\n"
-
-        # Inject prior step outputs if they exist (capped to last 3 files, max 10KB total)
-        # Default: only inject for context passing between steps
-        if pipeline_dir.exists():
-            prior_files = sorted(pipeline_dir.glob("*.json"))[-CONTEXT_MAX_FILES:]
-            if prior_files:
-                # Skip files that belong to the current step (don't inject own output)
-                own_prefix = f"{step.step_id}-"
-                prior_files = [f for f in prior_files if not f.name.startswith(own_prefix)]
-            if prior_files:
-                context_lines = ["\n\n--- 传递的上下文 ---"]
-                total_size = 0
-                for f in prior_files:
-                    try:
-                        content = f.read_text().strip()
-                        if content:
-                            total_size += len(content)
-                            if total_size > CONTEXT_MAX_SIZE_BYTES:
-                                context_lines.append(f"[{f.name}]: (truncated)")
-                                break
-                            context_lines.append(f"[{f.name}]:\n{content}")
-                    except Exception:
-                        pass
-                context_lines.append("---")
-                prompt += "\n".join(context_lines)
 
         # Inject output write instruction
         if step.output:
@@ -443,10 +404,16 @@ class ModuleRunner:
         if step.executor == "shell":
             full_prompt = step.rendered_prompt
         else:
-            # CC/judge: inject prior context + output instruction
+            # Replace user-facing context variables
+            prompt = step.rendered_prompt
+            prompt = prompt.replace("{prev_output_path}", step.prev_output_path)
+            # {current_output_path} = this step's own output file (exists on retry)
+            current_path = f".pipeline/{step.output}" if step.output else ""
+            prompt = prompt.replace("{current_output_path}", current_path)
+            # CC/judge: inject output instruction (minimal context only)
             rerun_reason = self._rerun_reason
             self._rerun_reason = ""  # clear after use
-            full_prompt = self._inject_context(step.rendered_prompt, step, rerun_reason)
+            full_prompt = self._inject_context(prompt, step, rerun_reason)
 
         if step.executor == "shell":
             try:

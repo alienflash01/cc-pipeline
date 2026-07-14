@@ -26,6 +26,7 @@ class CompiledStep:
     on_failure: str | None = None  # jump-back target on failure (step_id)
     on_failure_max_jumps: int = 2  # max jump-back count
     output_prompt: str | None = None  # custom output injection text
+    prev_output_path: str = ""  # .pipeline/xxx.json of previous step
 
 
 class PipelineCompiler:
@@ -187,6 +188,12 @@ class PipelineCompiler:
         # next file starts (sequential), instead of all-files-then-next-step (batched).
         if module.file_order == "sequential":
             compiled = self._reorder_sequential(compiled)
+
+        # Set prev_output_path for each compiled step
+        prev_output = ""
+        for cs in compiled:
+            cs.prev_output_path = f".pipeline/{prev_output}" if prev_output else ""
+            prev_output = cs.output or prev_output
 
         return compiled
 

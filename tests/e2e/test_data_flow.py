@@ -130,9 +130,9 @@ class TestGenerateReadsPriorContext:
         assert len(received_prompts) == 1
         prompt = received_prompts[0]
         # Scaffold data should be in the prompt
-        assert "scaffold.json" in prompt
-        assert "test_auth.c" in prompt
-        assert "dtest" in prompt
+        assert "scaffold.json" not in prompt  # prior outputs not injected
+        assert "test_auth.c" not in prompt
+        # prior output content not injected — "dtest" and "test_auth.c" not in prompt
 
 
 class TestFullPipelineDataFlow:
