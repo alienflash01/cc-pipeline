@@ -116,6 +116,7 @@ class ModuleRunner:
         self.verbose = verbose
         self.state_manager = state_manager
         self._shutdown_check = shutdown_check
+        self._rerun_reason = ""  # set by on_failure jump for context injection
 
         # Compute label column width for aligned output
         # Format: [module] or [module] [file]
@@ -160,6 +161,7 @@ class ModuleRunner:
                 break
             step = self.steps[step_idx]
             passed = False
+            failure_reason = ""  # set by exec failure or postcondition failure
 
             retry_budget = step.retry  # budget that CAN be consumed
             extra_retries = 0  # rate-limit retries (free, don't consume budget)
@@ -174,7 +176,7 @@ class ModuleRunner:
 
                 if self.verbose >= 1:
                     ts = datetime.now().strftime("%H:%M:%S")
-                    print(f"  [{ts}] {self._label(step.loop_file or "")} {step.step_id} START")
+                    print(f"  [{ts}] {self._label(step.loop_file or '')} {step.step_id} START")
 
                 # -vv: print full prompt or shell command
                 if self.verbose >= 2:
@@ -195,7 +197,7 @@ class ModuleRunner:
                     if extra_retries < MAX_FREE_RATE_LIMIT_RETRIES:
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] {self._label("")} {step.step_id} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
+                            print(f"  [{ts}] {self._label('')} {step.step_id} ⏳ RATE LIMIT (retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES})")
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=f"Rate limited (free retry {extra_retries+1}/{MAX_FREE_RATE_LIMIT_RETRIES}): {exec_result.reason}",
@@ -226,7 +228,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] {self._label("")} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
+                        print(f"  [{ts}] {self._label('')} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -234,7 +236,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] {self._label("")} {step.step_id} ❌ FAIL — {failure_reason}")
+                        print(f"  [{ts}] {self._label('')} {step.step_id} ❌ FAIL — {failure_reason}")
                         break  # exit inner while, step failed
 
                 # Layer 3: CC succeeded → check postcondition (inside while True)
@@ -248,7 +250,7 @@ class ModuleRunner:
                     passed = True
                     if self.verbose >= 1:
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] {self._label(step.loop_file or "")} {step.step_id} PASS")
+                        print(f"  [{ts}] {self._label(step.loop_file or '')} {step.step_id} PASS")
                     break
                 else:
                     if retry_budget > 0:
@@ -259,7 +261,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] {self._label("")} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
+                            print(f"  [{ts}] {self._label('')} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -268,7 +270,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] {self._label("")} {step.step_id} ❌ FAIL — {pc_result.reason}")
+                            print(f"  [{ts}] {self._label('')} {step.step_id} ❌ FAIL — {pc_result.reason}")
                             self._print_postcondition_diag(pc_result)
                         break
 
@@ -302,10 +304,17 @@ class ModuleRunner:
                             info={"from": step.step_id, "to": target,
                                   "jump": jump_counts[target_key]},
                         )
+                        # Set rerun reason for context injection on next step
+                        self._rerun_reason = (
+                            f"步骤 '{step.step_id}' 使用你的输出后失败了"
+                            f"（原因: {failure_reason}）。"
+                        ) if failure_reason else (
+                            f"步骤 '{step.step_id}' 使用你的输出后失败了。"
+                        )
                         step_idx = target_idx
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] {self._label(step.loop_file or "")} ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target_key]})")
+                            print(f"  [{ts}] {self._label(step.loop_file or '')} ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target_key]})")
                         continue
                 return {
                     "status": "failed",
@@ -330,9 +339,22 @@ class ModuleRunner:
         pd.mkdir(parents=True, exist_ok=True)
         return pd
 
-    def _inject_context(self, prompt: str, step: CompiledStep) -> str:
-        """Inject prior step outputs + progress + output instruction into prompt."""
+    def _inject_context(self, prompt: str, step: CompiledStep, rerun_reason: str = "") -> str:
+        """Inject prior step outputs + progress + output instruction into prompt.
+
+        If rerun_reason is set (on_failure jump), adds a clear signal that this
+        step is being re-executed because downstream failed.
+        """
         pipeline_dir = Path(self.worktree_path) / ".pipeline"
+
+        # If this is a re-run after downstream failure, warn CC clearly
+        if rerun_reason:
+            prompt += (
+                "\n\n⚠️  **重新执行信号**\n"
+                f"{rerun_reason}\n"
+                "你的上一轮输出被下游步骤拒绝了。\n"
+                "请基于上游输出**完整重新生成**，不要基于现有的 .pipeline/ 文件做小修补。\n"
+            )
 
         # Inject progress.md if it exists (Anthropic harness pattern)
         progress_file = pipeline_dir / "progress.md"
@@ -386,7 +408,7 @@ class ModuleRunner:
         """Mark step as completed in state.json (for resume)."""
         if self.state_manager:
             self.state_manager.mark_step_completed(
-                self.module_name, step.step_id, step.loop_file or ""
+                self.module_name, step.step_id, step.loop_file or ''
             )
 
     def _append_progress(self, step: CompiledStep, status: str, attempt: int) -> None:
@@ -417,7 +439,9 @@ class ModuleRunner:
             full_prompt = step.rendered_prompt
         else:
             # CC/judge: inject prior context + output instruction
-            full_prompt = self._inject_context(step.rendered_prompt, step)
+            rerun_reason = self._rerun_reason
+            self._rerun_reason = ""  # clear after use
+            full_prompt = self._inject_context(step.rendered_prompt, step, rerun_reason)
 
         if step.executor == "shell":
             try:
@@ -522,7 +546,7 @@ class ModuleRunner:
 
         # Always print postcondition command (not just verbose)
         ts = datetime.now().strftime("%H:%M:%S")
-        print(f"  [{ts}] {self._label("")} postcondition: {shell[:100]}")
+        print(f"  [{ts}] {self._label('')} postcondition: {shell[:100]}")
 
         result = eval_postcondition(
             shell=shell,
@@ -534,9 +558,9 @@ class ModuleRunner:
         if not result.passed:
             ts = datetime.now().strftime("%H:%M:%S")
             stdout_preview = (result.stdout or "")[:200]
-            print(f"  [{ts}] {self._label("")} postcondition FAIL: {result.reason}")
+            print(f"  [{ts}] {self._label('')} postcondition FAIL: {result.reason}")
             if stdout_preview:
-                print(f"  [{ts}] {self._label("")}   stdout: {stdout_preview}")
+                print(f"  [{ts}] {self._label('')}   stdout: {stdout_preview}")
 
         return result
 
