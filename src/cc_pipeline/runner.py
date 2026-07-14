@@ -104,6 +104,7 @@ class ModuleRunner:
         shell_executor: ShellExecutor | None = None,
         verbose: int = 0,
         state_manager=None,
+        shutdown_check=None,
     ):
         self.steps = steps
         self.module_name = module_name
@@ -114,6 +115,7 @@ class ModuleRunner:
         self.logger = Logger(run_dir=run_dir, module_name=module_name)
         self.verbose = verbose
         self.state_manager = state_manager
+        self._shutdown_check = shutdown_check
 
     def run(self) -> dict:
         """Execute all steps sequentially. Supports on_failure jump-back.
@@ -133,6 +135,10 @@ class ModuleRunner:
         jump_counts = {}  # per target step: {target_step_id: count}
 
         while step_idx < len(self.steps):
+            # Check shutdown between steps
+            if self._shutdown_check and self._shutdown_check():
+                print(f"  ⏸️  [{self.module_name}] Shutdown requested — stopping")
+                break
             step = self.steps[step_idx]
             passed = False
 

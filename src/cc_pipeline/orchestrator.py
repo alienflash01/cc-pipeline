@@ -224,6 +224,7 @@ class Orchestrator:
                 shell_executor=ShellExecutor(),
                 verbose=self.verbose,
                 state_manager=state,
+                shutdown_check=lambda: self._shutdown_requested,
             )
 
             # Run pipeline

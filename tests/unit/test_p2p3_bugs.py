@@ -51,13 +51,13 @@ class TestIssue10RenderBraces:
 # ─── #18: SIGTERM orphan CC subprocess ───
 
 class TestIssue18OrphanSubprocess:
-    def test_executor_uses_process_group(self):
-        """CCExecutor should use start_new_session to avoid orphaning."""
+    def test_executor_uses_subprocess_run(self):
+        """CCExecutor should use subprocess.run to execute CC (SIGINT propagates)."""
         import inspect
         from cc_pipeline.executor import CCExecutor
         source = inspect.getsource(CCExecutor.run)
-        assert "start_new_session" in source or "process_group" in source or "setsid" in source, \
-            "CCExecutor should isolate CC process with start_new_session"
+        assert "subprocess.run" in source, \
+            "CCExecutor should use subprocess.run (SIGINT propagates to child)"
 
 
 # ─── #21: concurrency=0 validation ───
