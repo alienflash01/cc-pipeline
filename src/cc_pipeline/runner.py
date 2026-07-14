@@ -398,8 +398,8 @@ class ModuleRunner:
                 prompt += "\n\n---\n" + output_tpl.replace("{output}", safe_output)
             else:
                 prompt += (
-                    "\n\n---\n请将本次执行的关键信息（创建的文件、关键决策、覆盖率数据等）"
-                    f"以 JSON 格式写入 .pipeline/{safe_output}"
+                    "\n\n---\n完成以上任务后，将执行摘要写入 .pipeline/"
+                    f"{safe_output}（JSON 格式，供后续步骤传递上下文）"
                 )
 
         return prompt

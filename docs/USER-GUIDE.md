@@ -505,10 +505,10 @@ generate CC 执行
 
 ### output_prompt 字段（自定义注入文本）
 
-默认情况下，框架在 prompt 尾部注入一段固定的中文指令，要求 CC 把关键信息以 JSON 格式写入 `.pipeline/{output}`：
+默认情况下，框架在 prompt 尾部注入一段简洁指令，要求 CC 在完成主要任务后将执行摘要以 JSON 格式写入 `.pipeline/{output}`（供后续步骤传递上下文）：
 
 ```
-请将本次执行的关键信息...以 JSON 格式写入 .pipeline/{output}
+完成以上任务后，将执行摘要写入 .pipeline/{output}（JSON 格式，供后续步骤传递上下文）
 ```
 
 如果这段默认指令不符合需求（例如想换语言、换格式、换措辞），用 `output_prompt` 自定义：
