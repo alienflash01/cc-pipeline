@@ -394,6 +394,48 @@ sequential：
 
 > 注：`sequential` 要求下游步骤（如 evaluate）也能在「单文件尚未齐全」的状态下运行；若 evaluate 依赖全部文件产出，请保持默认 `batched`。
 
+### source_files glob 模式
+
+`source_files` 支持 glob 通配符，每次 run 时自动展开：
+
+```yaml
+modules:
+  - name: auth
+    source_dir: src/auth/
+    source_files: ["*.c"]     # 展开为所有 .c 文件
+
+  - name: crypto
+    source_dir: src/crypto/
+    source_files:             # 混合 glob + dict
+      - "*.c"                 # 所有 .c 文件
+      - {path: "*.h", assert_macro: NONE}  # .h 文件配自定义变量
+```
+
+- glob 按名称排序（保证顺序稳定）
+- 无匹配文件 → 空列表（warn）
+- dict 中的 `path` 也支持 glob
+
+### step.modules：按模块过滤步骤
+
+`step.modules` 限制步骤只对指定模块生效。不配 = 所有模块。
+
+```yaml
+pipeline:
+  - id: analyze
+    # 所有模块都执行
+
+  - id: generate
+    loop: per_file
+    modules: [auth, crypto]   # 只对 auth 和 crypto
+
+  - id: evaluate
+    modules: [auth]           # 只对 auth
+```
+
+- `modules: null`（不配）= 所有模块
+- 引用了不存在的模块名 → 报错（fail-fast）
+- 不影响 depends_on / resume / on_failure
+
 ```yaml
 modules:
   - name: auth
@@ -1298,6 +1340,7 @@ cat {run_dir}/auth/transcript.jsonl | python3 -m json.tool
 # on_failure_jump    — on_failure 回跳（含 from/to/jump）
 # resume_skip        — resume 时跳过的 step
 # module_exception   — 异常（含完整 traceback）
+# command_audit      — 命令执行审计（shell command + CC 文件变更）
 ```
 
 ### 异常日志
