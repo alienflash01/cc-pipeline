@@ -50,6 +50,7 @@ class Module:
     source_files: list = field(default_factory=list)  # list[str | dict]
     variables: dict = field(default_factory=dict)
     file_order: str = "batched"  # 'batched' | 'sequential' — per_file expansion order
+    continue_on_error: bool = False  # continue next file if one fails
 
 
 @dataclass
@@ -255,6 +256,7 @@ def load_config(path: str) -> PipelineConfig:
             source_files=source_files_expanded,
             variables=variables,
             file_order=mod_raw.get("file_order", "batched"),
+            continue_on_error=mod_raw.get("continue_on_error", False),
         )
         modules.append(mod)
     

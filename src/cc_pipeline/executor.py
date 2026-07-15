@@ -56,13 +56,24 @@ class CCExecutor:
         if allowed_tools:
             cmd.extend(["--allowedTools", ",".join(allowed_tools)])
 
-        result = subprocess.run(
-            cmd,
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=timeout or self.default_timeout,
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                timeout=timeout or self.default_timeout,
+            )
+        except KeyboardInterrupt:
+            # Ctrl+C: kill CC and its children
+            print("  ⛔ Interrupted by user — killing CC process")
+            raise
+        except subprocess.TimeoutExpired:
+            return CCResult(
+                returncode=-1,
+                stdout="",
+                stderr=f"Timeout after {timeout or self.default_timeout}s",
+            )
 
         return CCResult(
             returncode=result.returncode,

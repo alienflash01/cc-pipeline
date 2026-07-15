@@ -226,6 +226,7 @@ class Orchestrator:
                 state_manager=state,
                 shutdown_check=lambda: self._shutdown_requested,
             )
+            runner._continue_on_error = module.continue_on_error
 
             # Run pipeline
             result = runner.run()

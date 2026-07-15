@@ -116,7 +116,9 @@ class ModuleRunner:
         self.verbose = verbose
         self.state_manager = state_manager
         self._shutdown_check = shutdown_check
-        self._rerun_reason = ""  # set by on_failure jump for context injection
+        self._rerun_reason = ""
+        self._failed_files: set[str] = set()  # files that failed (for continue_on_error)
+        self._continue_on_error = False
 
         # Compute label column width for aligned output
         # Format: [module] or [module] [file]
@@ -160,8 +162,12 @@ class ModuleRunner:
                 print(f"  ⏸️  [{self.module_name}] Shutdown requested — stopping")
                 break
             step = self.steps[step_idx]
+            # Skip files that already failed (continue_on_error mode)
+            if step.loop_file and step.loop_file in self._failed_files:
+                step_idx += 1
+                continue
             passed = False
-            failure_reason = ""  # set by exec failure or postcondition failure
+            failure_reason = ""
 
             retry_budget = step.retry  # budget that CAN be consumed
             extra_retries = 0  # rate-limit retries (free, don't consume budget)
@@ -316,6 +322,14 @@ class ModuleRunner:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] {self._label(step.loop_file or '')} ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target_key]})")
                         continue
+                # No on_failure (or exhausted) — module/step failed
+                if self._continue_on_error and step.loop_file:
+                    # Mark this file as failed, skip remaining steps for it
+                    self._failed_files.add(step.loop_file)
+                    ts = datetime.now().strftime("%H:%M:%S")
+                    print(f"  [{ts}] {self._label(step.loop_file)} ⏭️  SKIP remaining steps (continue_on_error)")
+                    step_idx += 1
+                    continue
                 return {
                     "status": "failed",
                     "module": self.module_name,
@@ -526,10 +540,18 @@ class ModuleRunner:
         # Always print postcondition result when failed
         if not result.passed:
             ts = datetime.now().strftime("%H:%M:%S")
-            stdout_preview = (result.stdout or "")[:200]
+            stdout_raw = (result.stdout or "")[:500]
+            # Try to pretty-print JSON for readability
+            try:
+                import json as _json
+                parsed = _json.loads(stdout_raw)
+                stdout_pretty = _json.dumps(parsed, indent=2, ensure_ascii=False)[:500]
+            except (ValueError, TypeError):
+                stdout_pretty = stdout_raw
             print(f"  [{ts}] {self._label('')} postcondition FAIL: {result.reason}")
-            if stdout_preview:
-                print(f"  [{ts}] {self._label('')}   stdout: {stdout_preview}")
+            if stdout_pretty.strip():
+                for line in stdout_pretty.splitlines():
+                    print(f"  [{ts}] {self._label('')}   │ {line}")
 
         return result
 
