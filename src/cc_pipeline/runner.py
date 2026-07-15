@@ -370,14 +370,17 @@ class ModuleRunner:
 
         # Inject output write instruction
         if step.output:
-            # Sanitize: strip path traversal and slashes
             safe_output = step.output.replace("..", "").replace("/", "").replace("\\", "")
-            # Use custom output_prompt if provided, otherwise default
             output_tpl = getattr(step, "output_prompt", None)
             if output_tpl:
                 prompt += "\n\n---\n" + output_tpl.replace("{output}", safe_output)
             else:
-                prompt += f"\n\nOutput: .pipeline/{safe_output}"
+                prompt += (
+                    "\n\n---\n"
+                    f"任务完成后，将执行摘要写入 .pipeline/{safe_output}，JSON 格式：\n"
+                    '{"summary": "...", "files": [...], "issues": [...]}\n'
+                    "确保该文件存在且为合法 JSON。"
+                )
 
         return prompt
 
@@ -512,6 +515,13 @@ class ModuleRunner:
         # Audit: log file changes after CC execution
         changes = self._detect_file_changes()
         self.logger.log_file_changes(step=step.step_id, changes=changes)
+        # Warn if output file was expected but not created
+        if step.output:
+            safe_output = step.output.replace("..", "").replace("/", "").replace("\\", "")
+            expected = Path(self.worktree_path) / ".pipeline" / safe_output
+            if not expected.exists():
+                ts = datetime.now().strftime("%H:%M:%S")
+                print(f"  [{ts}] {self._label(step.loop_file or '')} ⚠️  Output file not created: .pipeline/{safe_output}")
         if self.verbose >= 2 and cc_result.stdout:
             ts = datetime.now().strftime("%H:%M:%S")
             print(f"  [{ts}]   CC OUTPUT (exit {cc_result.returncode}):")

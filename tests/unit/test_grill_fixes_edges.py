@@ -292,7 +292,7 @@ class TestContextPassingEdges:
         result = runner._inject_context("evaluate", step)
         assert "scaffold.json" not in result
         assert "generate.json" not in result
-        assert '"files"' not in result
+        assert "scaffold" not in result  # prior file name not injected
         assert '"coverage"' not in result  # prior outputs not injected by default
 
     def test_corrupt_json_not_injected_by_default(self, tmp_path):
