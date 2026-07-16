@@ -28,7 +28,7 @@ class TestExpectTrueFalse:
 
     def test_false_exit1(self):
         r = _run_postcondition("false", "false")
-        assert r.passed is False  # shell failed, postcondition fails regardless
+        assert r.passed is True  # expect false + shell exit 1 → passed (non-0 as expected)
 
     def test_true_empty_stdout(self):
         """expect 'true' with empty stdout → pass (exit 0)."""

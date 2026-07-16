@@ -61,6 +61,15 @@ def evaluate(
             stdout=stdout, stderr=stderr,
             reason="pass" if passed else f"expected exit {'0' if expect else 'non-0'}, got {result.returncode}",
         )
+    # string "true"/"false" — also checked before returncode
+    if isinstance(expect, str) and expect.strip().lower() in ("true", "false"):
+        want_pass = expect.strip().lower() == "true"
+        passed = (result.returncode == 0) == want_pass
+        return PostconditionResult(
+            passed=passed,
+            stdout=stdout, stderr=stderr,
+            reason="pass" if passed else f"expected exit {'0' if want_pass else 'non-0'}, got {result.returncode}",
+        )
     # Shell failed → postcondition fails
     if result.returncode != 0:
         pc_result = PostconditionResult(

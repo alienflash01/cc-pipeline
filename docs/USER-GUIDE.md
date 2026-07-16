@@ -338,7 +338,6 @@ modules:
 | `id` | string | **必填** | 步骤唯一标识 |
 | `executor` | string | `claude-code` | 执行器类型（`claude-code` / `shell` / `judge`） |
 | `prompt` | string | `""` | 发送给 CC 的指令（支持变量注入） |
-| `command` | string | `""` | shell executor 的命令（替代 `prompt`） |
 | `prompt_file` | string | `null` | 从外部 `.md` 文件加载 prompt |
 | `model` | string | `""` | 按步骤指定模型（空 = 用全局/CC 默认，覆盖全局 `model`） |
 | `loop` | string | `null` | `per_file` = 逐文件串行 |
@@ -356,9 +355,9 @@ modules:
 
 ### prompt 解析优先级
 
-- **shell executor**：`command` > `prompt` > `prompt_file`
+- **shell executor**：`prompt` > `prompt_file`
 - **claude-code / judge executor**：`prompt` > `prompt_file`
-- 当 `prompt`/`command` 均为空时，才会从 `prompt_file` 加载
+- 当 `prompt` 均为空时，才会从 `prompt_file` 加载
 
 ### loop: per_file
 
@@ -522,7 +521,7 @@ modules:
 ```
 
 - 运行确定性命令（覆盖率、编译、lint）
-- **`command` 就是 shell 命令本身**（也可用 `prompt`），不会被注入上下文或 output 指令
+- **`prompt` 就是 shell 命令本身**（也可用 `prompt`），不会被注入上下文或 output 指令
 - **完全受信任** — 输出直接作为门控依据
 
 ### judge（AI 裁判层）
@@ -1561,7 +1560,7 @@ examples/
 2. CC 被要求将结果写入 `.pipeline/scaffold.json`
 3. 下一步的 CC（claude-code/judge）自动收到前序所有 `.pipeline/*.json` 的内容
 
-注意：shell executor 不注入上下文（它的 `command` 就是命令本身）。
+注意：shell executor 不注入上下文（它的 `prompt` 就是命令本身）。
 
 ### Q: prompt 里有 C 代码的花括号 `{ return 0; }`，会被误解析吗？
 
@@ -1647,6 +1646,6 @@ cc-pipeline --help                                 # 帮助
 | v0.3.2 | 2026-07-09 | 去掉 git_checkpoint（-868行），retry/on_failure 统一不回滚，resume 改用 state.json；squash merge + commit_message 模板 + auto_merge 开关 + AI 冲突解决；snippets 公共片段；output `{file}` 隔离；三级配置拼写检测（global/module/step）；worktree 残留修复（shutil.rmtree）；所有 git 操作 stderr 可见；postcondition 执行可见（-v）；resume --dry-run；--module 逗号多选 |
 | v0.3.1 | 2026-07-08 | Round 5+6 审计修复（11 bug）：postcondition 超时、merge 并发竞态锁、jump_count per-target、worktree 子串误匹配、daemon fd 泄漏、shell 失败终端打印；config encoding=utf-8；__main__.py；TESTING-RULES.md + AGENTS.md |
 | v0.3.0 | 2026-07-06 | UX 审计修复：默认输出不再静默、`run --dry-run` 配置预览、preflight 检查、`file_order`、postcondition `expect: true/false`、shell 失败详情、Ctrl+C 优雅退出、verbose 三级 |
-| v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/command/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
+| v0.3 | 2026-07-04 | source_files dict 格式、coverage→variables 迁移、daemon 模式、resume 幂等恢复、HTML 报告（Mermaid DAG）、on_failure 回跳、uninstall、per-step model/timeout/prompt_file、GLM rate-limit 调优（3 次/30 秒）、expect OR 表达式、`{output}` 变量与 `output_prompt` 自定义注入文本、`transcript` 命令、verbose 带时间戳、C 代码花括号免误报、prompt 完整记录 |
 | v0.2 | 2026-07-01 | CC 上下文传递、CO 式错误处理、rate limit 保护、orchestrator 异常保护、rollback_to_latest |
 | v0.1 | 2026-06-30 | 初始版本：Phase 1-4 开发完成，135 tests |
