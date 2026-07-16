@@ -100,10 +100,10 @@ class TestShellExecutorUsesPrompt:
         assert "cd tests/auth" in steps[0].rendered_prompt
 
 
-class TestLegacyCommandYamlIgnored:
-    """#5: an old YAML with `command:` loads without crashing, warns, ignores it."""
+class TestLegacyCommandYamlRaises:
+    """#5: old YAML with `command:` now raises ValueError."""
 
-    def test_command_in_yaml_warns_unknown_and_is_ignored(self, tmp_path):
+    def test_command_field_raises_error(self, tmp_path):
         config_file = tmp_path / "config.yaml"
         config_file.write_text(f"""
 repo: {tmp_path}
@@ -116,13 +116,9 @@ modules:
     source_dir: src/
     source_files: [a.c]
 """)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            config = load_config(str(config_file))
-
-        # Does not crash, and the dead field does not populate anything.
-        assert not hasattr(config.pipeline[0], "command")
-
-        # command is no longer a known field → warned as unknown (and ignored).
-        unknown = [str(x.message) for x in w if "Unknown field 'command'" in str(x.message)]
-        assert unknown, "Expected an 'Unknown field command' warning for legacy YAML"
+        from cc_pipeline.config import load_config
+        try:
+            load_config(str(config_file))
+            assert False, "Expected ValueError for 'command' field"
+        except ValueError as e:
+            assert "not a recognized field" in str(e)

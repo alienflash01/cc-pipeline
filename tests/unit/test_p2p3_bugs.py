@@ -74,7 +74,7 @@ concurrency: 0
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -226,7 +226,7 @@ class TestIssue48ExecutorDefault:
 repo: {tmp_path}
 pipeline:
   - id: x
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/

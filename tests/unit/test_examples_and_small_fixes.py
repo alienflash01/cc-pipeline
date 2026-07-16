@@ -67,7 +67,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo hi"
+    prompt: "echo hi"
 modules:
   - name: m
     source_dir: src/

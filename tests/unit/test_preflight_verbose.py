@@ -127,7 +127,7 @@ base_branch: {_head_branch(git_repo)}
 pipeline:
   - id: gen
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: auth
     source_dir: src/
@@ -155,7 +155,7 @@ base_branch: {_head_branch(git_repo)}
 pipeline:
   - id: gen
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: auth
     source_dir: src/

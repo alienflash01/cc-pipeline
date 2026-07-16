@@ -136,7 +136,7 @@ concurrency: 999
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -159,7 +159,7 @@ max_retries: 999
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/

@@ -54,7 +54,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 """)
         ret = main(["run", str(cfg)])
         assert ret == 1

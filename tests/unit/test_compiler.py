@@ -185,7 +185,7 @@ class TestPipelineCompiler:
 
         dup_yaml = COMPILER_YAML.replace(
             "- id: evaluate",
-            "- id: scaffold\n    executor: shell\n    command: echo hi\n  - id: evaluate",
+            "- id: scaffold\n    executor: shell\n    prompt: echo hi\n  - id: evaluate",
         )
         # This YAML might be invalid, let's construct it properly
         dup_yaml = """
@@ -196,7 +196,7 @@ pipeline:
     prompt: "a"
   - id: scaffold
     executor: shell
-    command: echo hi
+    prompt: echo hi
 modules:
   - name: auth
     spec_id: S

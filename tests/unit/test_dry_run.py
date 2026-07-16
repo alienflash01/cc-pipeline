@@ -52,7 +52,7 @@ model: {model}
 pipeline:
   - id: scaffold
     executor: shell
-    command: "echo scaffold"
+    prompt: "echo scaffold"
   - id: generate
     executor: claude-code
     prompt: "generate for {{file}}"
@@ -173,7 +173,7 @@ base_branch: {_head_branch(git_repo)}
 pipeline:
   - id: gen
     executor: shell
-    command: "echo {{file}}"
+    prompt: "echo {{file}}"
     loop: per_file
 modules:
   - name: core
@@ -246,7 +246,7 @@ base_branch: {_head_branch(git_repo)}
 pipeline:
   - id: gen
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
     depends_on: ghost
 modules:
   - name: auth

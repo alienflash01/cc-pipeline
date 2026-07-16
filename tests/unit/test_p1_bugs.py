@@ -134,7 +134,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
     on_complete: [notify]
     skill: my-skill
 modules:
@@ -165,7 +165,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: dup
     source_dir: src/
@@ -198,7 +198,7 @@ concurrency: -1
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -220,7 +220,7 @@ max_retries: -5
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -307,7 +307,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: "auth/v2"
     source_dir: src/

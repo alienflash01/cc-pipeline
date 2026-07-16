@@ -159,6 +159,11 @@ def load_config(path: str) -> PipelineConfig:
         import warnings as _w
         for key in step_raw:
             if key not in _KNOWN_STEP_FIELDS:
+                if key == "command":
+                    raise ValueError(
+                        f"Step '{step_raw.get('id','?')}': 'command' is not a recognized field. "
+                        f"Shell executor uses 'prompt' for the command."
+                    )
                 _w.warn(f"Unknown field '{key}' in step '{step_raw.get('id','?')}' — ignored", stacklevel=2)
         if "id" not in step_raw or not step_raw["id"]:
             raise ValueError(f"Pipeline step missing required field: id (step data: {step_raw})")

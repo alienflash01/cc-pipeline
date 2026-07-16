@@ -114,7 +114,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
     unknow_field: value
 modules:
   - name: m

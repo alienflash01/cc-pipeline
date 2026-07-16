@@ -209,7 +209,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo test"
+    prompt: "echo test"
 modules:
   - name: "auth; rm -rf /"
     source_dir: src/

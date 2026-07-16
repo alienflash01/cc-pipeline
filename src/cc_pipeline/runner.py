@@ -225,7 +225,8 @@ class ModuleRunner:
                 # Layer 2: CC failed / zero-work / timeout / error → skip postcondition
                 if exec_result.outcome in (ExecOutcome.CC_FAILED, ExecOutcome.ZERO_WORK,
                                            ExecOutcome.TIMEOUT, ExecOutcome.UNKNOWN_ERROR):
-                    failure_reason = f"{exec_result.outcome.value}: {exec_result.reason}"
+                    prefix = "shell failed" if step.executor == "shell" else exec_result.outcome.value
+                    failure_reason = f"{prefix}: {exec_result.reason}"
 
                     if retry_budget > 0:
                         retry_budget -= 1

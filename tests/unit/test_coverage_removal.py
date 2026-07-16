@@ -21,7 +21,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -49,7 +49,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/
@@ -98,7 +98,7 @@ repo: {tmp_path}
 pipeline:
   - id: x
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: m
     source_dir: src/

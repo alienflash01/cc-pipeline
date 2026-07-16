@@ -62,7 +62,7 @@ concurrency: 5
 pipeline:
   - id: gen
     executor: shell
-    command: "echo ok"
+    prompt: "echo ok"
 modules:
   - name: auth
     source_dir: src/
