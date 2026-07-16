@@ -436,6 +436,45 @@ pipeline:
 - 引用了不存在的模块名 → 报错（fail-fast）
 - 不影响 depends_on / resume / on_failure
 
+### continue_on_error：文件失败不阻塞后续文件
+
+`module.continue_on_error: true` 时，per_file 模式下某个文件失败后跳过该文件的剩余步骤，继续处理其他文件。默认 `false`（一个文件失败 = 整个 module 失败）。
+
+```yaml
+modules:
+  - name: auth
+    source_files: ["*.c"]
+    continue_on_error: true   # a.c 失败后继续 b.c 和 c.c
+```
+
+- 只对 per_file 步骤生效
+- 失败文件被加入跳过列表，后续步骤自动跳过
+- 全部文件失败 → module fail；部分失败 → module pass
+
+### 上下文变量：{prev_output_path} / {current_output_path}
+
+默认**不自动注入**任何上下文。用户在 prompt 中写以下变量自行控制：
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `{prev_output_path}` | `.pipeline/P1.json` | 上一步的 output 文件路径（编译期确定） |
+| `{current_output_path}` | `.pipeline/P2.json` | 当前步骤自己的 output 文件路径 |
+
+```yaml
+# 用户控制上下文传递
+- id: evaluate
+  prompt: "读取 {prev_output_path} 的内容，评估覆盖率"
+
+# retry 时参考自己的旧输出
+- id: evaluate
+  prompt: "如果 {current_output_path} 存在，参考上一轮的输出改进"
+  retry: 3
+```
+
+- 不写变量 = 不注入任何上下文（prompt 保持干净）
+- per_file 模式下每个文件的前一步是编译期确定的
+- on_failure 跳跃时自动注入 rerun 信号
+
 ```yaml
 modules:
   - name: auth
@@ -514,59 +553,61 @@ modules:
 
 ### 工作原理
 
-cc-pipeline 通过 `.pipeline/` 目录在 CC 之间传递上下文：
+cc-pipeline **默认不自动注入**上下文。用户通过变量控制：
 
 ```
-scaffold CC 执行
+scaffold CC 执行（output: "scaffold.json"）
     ↓ 框架在 prompt 尾部追加：
-    "请将关键信息写入 .pipeline/scaffold.json"
+    "任务完成后，将执行摘要写入 .pipeline/scaffold.json，JSON 格式：
+     {"summary": "...", "files": [...], "issues": [...]}
+     确保该文件存在且为合法 JSON。"
     ↓ CC 写入文件
-.pipeline/scaffold.json = {"files_created": ["test_auth.c"], ...}
+.pipeline/scaffold.json = {"summary": "created test scaffold", ...}
 
 generate CC 执行
-    ↓ 框架自动扫描 .pipeline/*.json，注入到 prompt：
-    "--- 前序步骤的上下文 ---
-     [scaffold.json]: {"files_created": ["test_auth.c"], ...}
-     ---"
-    ↓ CC 看到 scaffold 的产出
+    ↓ 用户 prompt 中写了 {prev_output_path}
+    "读取 {prev_output_path} 的内容，生成测试"
+    ↓ 框架替换为：
+    "读取 .pipeline/scaffold.json 的内容，生成测试"
+    ↓ CC 自己读取文件
 ```
 
 ### output 字段
 
-设置 `output` 后，框架自动做两件事：
-
-1. **执行前**：创建 `.pipeline/` 目录（如不存在）
-2. **prompt 追加**：在 CC 的 prompt 尾部追加写入指令
+设置 `output` 后，框架自动追加 3 行写入指令：
 
 ```yaml
 - id: scaffold
-  executor: claude-code
   prompt: "生成测试脚手架"
-  output: scaffold.json    # ← CC 会被要求写这个文件
+  output: scaffold.json    # ← CC 会被提示写这个文件
 ```
+
+CC 收到的默认指令：
+
+```
+任务完成后，将执行摘要写入 .pipeline/scaffold.json，JSON 格式：
+{"summary": "...", "files": [...], "issues": [...]}
+确保该文件存在且为合法 JSON。
+```
+
+- CC 没写 output 文件 → 终端 warn：`⚠️  Output file not created: ...`
+- 下一步用 `{prev_output_path}` 引用时文件不存在 → CC 自行处理
 
 ### output_prompt 字段（自定义注入文本）
 
-默认情况下，框架在 prompt 尾部注入一段简洁指令，要求 CC 在完成主要任务后将执行摘要以 JSON 格式写入 `.pipeline/{output}`（供后续步骤传递上下文）：
-
-```
-完成以上任务后，将执行摘要写入 .pipeline/{output}（JSON 格式，供后续步骤传递上下文）
-```
-
-如果这段默认指令不符合需求（例如想换语言、换格式、换措辞），用 `output_prompt` 自定义：
+用 `output_prompt` 完全覆盖默认指令：
 
 ```yaml
 - id: analyze
-  executor: claude-code
-  prompt: '分析 {module}，结果写到 {output}'
-  output: analyze.json
-  output_prompt: '将分析结果以 JSON 格式写入 .pipeline/{output}'
+  output: "analyze.json"
+  output_prompt: "将分析结果写入 {output}，包含 coverage 和 missing 字段"
 ```
 
-- `output_prompt` 中的 `{output}` 同样会被替换成 `output` 字段的实际值
-- 留空（默认 `null`）时使用框架内置的默认中文指令
+### 上下文变量
 
-### {output} 变量
+`{prev_output_path}` 和 `{current_output_path}` 在运行时替换。不写 = 不注入。
+
+---
 
 `output` 字段的值可以作为 `{output}` 变量在 `prompt` 中直接引用：
 
