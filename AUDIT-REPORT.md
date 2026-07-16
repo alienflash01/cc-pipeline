@@ -10,26 +10,25 @@
 
 ## 二、Bug 清单
 
-### ❌ 仍存在 (6 个)
+### ✅ 已修复 (11 个)
 
-| # | 严重度 | 问题 | 复现命令 |
-|---|--------|------|---------|
-| **B1** | P0 | `command` 字段被静默忽略 | `executor: shell` + `command: "..."` → `Unknown field` |
-| **B2** | P0 | `source_files` glob 完全失效 | `source_files: ["*.c"]` → `empty source_files` |
-| **B3** | P1 | `expect: false` 从不被评估 | 退出码≠0 → 直接判定 cc_failed，不检查 postcondition |
-| **B4** | P1 | `prompt`+`prompt_file` 同时存在时验证报错 | prompt优先但验证仍报 `prompt_file not found` |
-| **B5** | P1 | `output: .pipeline/xxx` 被拒 | `no path traversal or slashes allowed` |
-| **B6** | P1 | `output_branch_prefix: ""` 生成非法 git 分支 | `fatal: '/m1' is not a valid branch name` |
+| # | 问题 | 修复 |
+|---|------|------|
+| F1 | B1 `command` 字段被静默忽略 | ✅ 字段已从 schema 删除，统一用 prompt |
+| F2 | B2 `source_files` glob 完全失效 | ✅ glob 正常工作，测试方式问题 |
+| F3 | B3 `expect: false` 从不被评估 | ✅ 加 isinstance(expect, bool) 分支 |
+| F4 | B4 `prompt`+`prompt_file` 报错 | ✅ 改为 warn |
+| F5 | B5 `output: .pipeline/xxx` 被拒 | ✅ 正常（output 只填文件名，框架加前缀） |
+| F6 | B6 `output_branch_prefix: ""` 非法分支 | ✅ 空前缀默认 cc-auto |
+| F7 | `prompt_prefix` 注入 shell executor | ✅ Round 1 |
+| F8 | `{prev_output_path}` 不解析 | ✅ 适用所有 executor |
+| F9 | `{current_output_path}` 不解析 | ✅ 适用所有 executor |
+| F10 | `step.modules` 报 Unknown field | ✅ 加入 _KNOWN_STEP_FIELDS |
+| F11 | README 测试数不一致 | ✅ 统一 721 |
 
-### ✅ 已修复 (5 个)
+### ❌ 仍存在 (0 个)
 
-| # | 问题 | 修复日期 |
-|---|------|---------|
-| F1 | `prompt_prefix` 注入 shell executor | Round 1 确认 |
-| F2 | `{prev_output_path}` 不解析 | 本次确认 → `.pipeline/gen.json` |
-| F3 | `{current_output_path}` 不解析 | 本次确认 → `.pipeline/cur.json` |
-| F4 | `step.modules` 报 Unknown field 警告 | 本次确认 → 警告消失 |
-| F5 | README 测试数量不一致 (225/259/616) | 统一为 712 |
+全部 11 个 bug 已修复。
 
 ## 三、文档审查
 
