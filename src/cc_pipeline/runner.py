@@ -424,16 +424,17 @@ class ModuleRunner:
         # Ensure .pipeline/ exists for context passing
         self._ensure_pipeline_dir()
 
+        # Replace context variables (all executors)
+        prompt = step.rendered_prompt
+        prompt = prompt.replace("{prev_output_path}", step.prev_output_path)
+        current_path = f".pipeline/{step.output}" if step.output else ""
+        prompt = prompt.replace("{current_output_path}", current_path)
+
         # Shell executor: use raw prompt as-is (it IS the shell command)
         if step.executor == "shell":
-            full_prompt = step.rendered_prompt
+            full_prompt = prompt
         else:
             # Replace user-facing context variables
-            prompt = step.rendered_prompt
-            prompt = prompt.replace("{prev_output_path}", step.prev_output_path)
-            # {current_output_path} = this step's own output file (exists on retry)
-            current_path = f".pipeline/{step.output}" if step.output else ""
-            prompt = prompt.replace("{current_output_path}", current_path)
             # CC/judge: inject output instruction (minimal context only)
             rerun_reason = self._rerun_reason
             self._rerun_reason = ""  # clear after use

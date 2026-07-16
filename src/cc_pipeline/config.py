@@ -79,6 +79,7 @@ _KNOWN_STEP_FIELDS = {
     "loop", "retry", "max_retries", "output", "depends_on",
     "postcondition", "timeout",
     "on_failure", "on_failure_max_jumps", "output_prompt",
+    "modules",
 }
 
 

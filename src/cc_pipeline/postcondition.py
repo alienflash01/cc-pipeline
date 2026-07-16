@@ -61,6 +61,14 @@ def evaluate(
             stderr=stderr,
             reason=f"Shell command exited with code {result.returncode}",
         )
+    elif isinstance(expect, bool):
+        # YAML expect: false → Python False (bool), not string
+        passed = (result.returncode == 0) == expect
+        return PostconditionResult(
+            passed=passed,
+            stdout=stdout, stderr=stderr,
+            reason="pass" if passed else f"expected exit {'0' if expect else 'non-0'}, got {result.returncode}",
+        )
     elif expect is None:
         # No expect → pass (shell exited 0)
         pc_result = PostconditionResult(
@@ -77,7 +85,7 @@ def evaluate(
     return pc_result
 
 
-def _evaluate_expect(expect: str, stdout: str, stderr: str) -> PostconditionResult:
+def _evaluate_expect(expect: str | bool, stdout: str, stderr: str) -> PostconditionResult:
     """Evaluate an expect expression against stdout."""
     expect = expect.strip()
 
