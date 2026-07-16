@@ -85,8 +85,6 @@ class PipelineCompiler:
             "source_dir": module.source_dir,
             "spec_id": module.spec_id,
             "source_files": ", ".join(sf_list),
-            "prev_output_path": "",     # replaced at runtime
-            "current_output_path": "",  # replaced at runtime
             **module.variables,
         }
 

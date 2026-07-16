@@ -53,6 +53,9 @@ def render(
         elif var_name in variables and not any(c.isspace() for c in var_name):
             val = variables[var_name]
             result.append("" if val is None else str(val))
+        elif var_name in ("prev_output_path", "current_output_path"):
+            # Runtime-replaced variables — keep literal, no warning
+            result.append(match.group(0))
         else:
             # Check if this looks like a variable name (alphanumeric + underscore only)
             # C code like { return 0; } or { error_path; } should not warn
