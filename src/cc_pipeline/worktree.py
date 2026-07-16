@@ -21,7 +21,7 @@ class WorktreeManager:
         self.base_branch = base_branch
         self.worktree_root = Path(worktree_root) if worktree_root else Path(tempfile.gettempdir()) / "cc-pipeline-worktrees"
         self.worktree_root.mkdir(parents=True, exist_ok=True)
-        self.branch_prefix = branch_prefix
+        self.branch_prefix = branch_prefix or "cc-auto"  # empty → default
         self._lock = threading.Lock()  # serialize git worktree operations
         self._worktrees: dict[str, str] = {}  # module_name → path
 
