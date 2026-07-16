@@ -19,8 +19,8 @@ class PostconditionResult:
 
 def evaluate(
     shell: str,
-    expect: str | None,
     cwd: str,
+    expect: str | bool | None = None,
     timeout: int = 300,
 ) -> PostconditionResult:
     """Evaluate a postcondition by running a shell command and checking expect.
@@ -53,6 +53,14 @@ def evaluate(
     stdout = result.stdout.decode("utf-8", errors="replace") if isinstance(result.stdout, bytes) else (result.stdout or "")
     stderr = result.stderr.decode("utf-8", errors="replace") if isinstance(result.stderr, bytes) else (result.stderr or "")
 
+    # bool expect (YAML false/true) — checked before returncode
+    if isinstance(expect, bool):
+        passed = (result.returncode == 0) == expect
+        return PostconditionResult(
+            passed=passed,
+            stdout=stdout, stderr=stderr,
+            reason="pass" if passed else f"expected exit {'0' if expect else 'non-0'}, got {result.returncode}",
+        )
     # Shell failed → postcondition fails
     if result.returncode != 0:
         pc_result = PostconditionResult(
@@ -60,14 +68,6 @@ def evaluate(
             stdout=stdout,
             stderr=stderr,
             reason=f"Shell command exited with code {result.returncode}",
-        )
-    elif isinstance(expect, bool):
-        # YAML expect: false → Python False (bool), not string
-        passed = (result.returncode == 0) == expect
-        return PostconditionResult(
-            passed=passed,
-            stdout=stdout, stderr=stderr,
-            reason="pass" if passed else f"expected exit {'0' if expect else 'non-0'}, got {result.returncode}",
         )
     elif expect is None:
         # No expect → pass (shell exited 0)
