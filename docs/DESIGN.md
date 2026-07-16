@@ -1,5 +1,7 @@
 # cc-pipeline 详细设计方案
 
+> **⚠️ 本文档为 v0.1 历史设计，部分字段已删除（skill/rollback/on_complete/command）。以 USER-GUIDE.md 为准。**
+>
 > 版本：v0.1 | 日期：2026-06-29
 
 ---

@@ -137,11 +137,6 @@ echo 'auth' > /tmp/.../bb12_module.txt
 
 | 优先级 | 编号 | 问题 | 工作量 |
 |---|---|---|---|
-| **P0** | BUG-1 | `command` 字段被静默忽略 | 小（代码或文档二选一） |
-| **P1** | BUG-2 | `prompt_prefix` 注入到 shell executor | 小（shell executor 跳过 prefix） |
-| **P1** | BUG-3 | state.json 跨 run 污染 | 中（state 加 pipeline config hash 区分） |
-| **P2** | DOC-2 | prompt 注入行为文档矛盾 | 小（统一文档） |
-| **P2** | DOC-3 | output_branch_prefix 默认值矛盾 | 小（更新 CONFIG-GUIDE） |
-| **P2** | DOC-4 | DESIGN.md 过时字段 | 小（加 v0.1 过期标记或更新） |
+| **P0** | BUG-1 | `command` 字段被静默忽略 | ✅ 已删除 command（统一 prompt） |\n| **P1** | BUG-2 | `prompt_prefix` 注入 shell executor | ✅ shell 跳过 prefix |\n| **P1** | BUG-3 | state.json 跨 run 污染 | ✅ 设计确认：每个 run 独立 run_dir |\n| **P2** | DOC-2 | prompt 注入行为文档矛盾 | ✅ §6 已重写 |\n| **P2** | DOC-3 | output_branch_prefix 默认值 | ✅ 统一 cc-auto |\n| **P2** | DOC-4 | DESIGN.md 过时字段 | ✅ 加 v0.1 过期标记 |
 | **P3** | DOC-6~13 | 边界值行为未定义 | 中（补文档 + 加测试） |
 | **P3** | DOC-1 | 测试数量不一致 | 小（更新数字） |
