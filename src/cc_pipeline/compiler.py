@@ -215,9 +215,9 @@ class PipelineCompiler:
         else:
             text = ""
 
-        # Prepend shared prompt_prefix
+        # Prepend shared prompt_prefix (CC/judge only, NOT shell)
         prefix = getattr(self.config, "prompt_prefix", "")
-        if prefix:
+        if prefix and step.executor != "shell":
             text = prefix.rstrip() + "\n\n" + text
 
         # Expand {{snippet:name}} references
