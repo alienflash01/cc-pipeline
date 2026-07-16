@@ -457,8 +457,8 @@ modules:
 
 | 变量 | 值 | 说明 |
 |------|-----|------|
-| `{prev_output_path}` | `.pipeline/P1.json` | 上一步的 output 文件路径（编译期确定） |
-| `{current_output_path}` | `.pipeline/P2.json` | 当前步骤自己的 output 文件路径 |
+| `{prev_output_path}` | `.pipeline/P1.json` | 上一步的 output 文件路径（适用所有 executor） |
+| `{current_output_path}` | `.pipeline/P2.json` | 当前步骤的 output 文件路径（适用所有 executor） |
 
 ```yaml
 # 用户控制上下文传递
