@@ -1,5 +1,7 @@
 # cc-pipeline 配置文件完全指南
 
+> **⚠️ 本文档部分内容已过时（skill/coverage/command 字段已删除）。以 USER-GUIDE.md 为准。**
+>
 > 所有字段的完整说明、默认值、示例
 
 ---
@@ -12,7 +14,7 @@
 | `base_branch` | string | | `main` | worktree 创建基准分支 |
 | `concurrency` | int | | `5` | module 间并行数（GLM 建议 ≤5） |
 | `max_retries` | int | | `3` | 全局默认重试次数（可被 step 级覆盖） |
-| `output_branch_prefix` | string | | `ut-auto` | worktree 分支前缀 |
+| `output_branch_prefix` | string | | `cc-auto` | worktree 分支前缀 |
 
 ---
 
@@ -45,7 +47,7 @@
 | `judge` | `prompt: "..."` | 注入上下文，只读权限 | 🔶 半可信 | AI 质量评测/审查 |
 
 **关键区别：**
-- `claude-code` 和 `judge`：自动注入 `.pipeline/*.json` + `progress.md` 到 prompt
+- `claude-code` 和 `judge`：默认不注入上下文。用户通过 `{prev_output_path}` / `{current_output_path}` 变量自行控制
 - `shell`：prompt 就是 shell 命令本身，不做任何注入
 - `judge`：CC 以只读模式运行（allowedTools = Read + Bash）
 
@@ -120,13 +122,16 @@ variables:
 |------|------|
 | `{.pipeline/xxx.json}` | 读取文件内容，替换到 prompt 中 |
 
-### 自动注入（仅 claude-code/judge）
+### 上下文字段（用户控制）
 
-| 注入内容 | 来源 | 条件 |
-|---------|------|------|
-| `进度记录` 段 | `.pipeline/progress.md` | 文件存在时 |
-| `前序步骤的上下文` 段 | `.pipeline/*.json` 所有文件 | 目录非空时 |
-| output 写入指令 | step.output | output 字段存在时 |
+cc-pipeline **默认不自动注入**上下文。用户通过以下变量自行控制：
+
+| 变量 | 说明 |
+|------|------|
+| `{prev_output_path}` | 上一步的 output 文件路径 |
+| `{current_output_path}` | 当前步骤自己的 output 文件路径 |
+
+output 字段存在时，框架自动追加写入指令（JSON 模板）。
 
 ---
 

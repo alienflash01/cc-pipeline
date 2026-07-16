@@ -2,7 +2,7 @@
 
 > **Multi-stage serial pipeline orchestrator for Claude Code** — module 间并行 + module 内串行 + CC 间上下文传递 + git 原生状态管理 + CO 式错误处理
 
-[![tests](https://img.shields.io/badge/tests-225%20passed-brightgreen)]()
+[![tests](https://img.shields.io/badge/tests-712%20passed-brightgreen)]()
 [![coverage](https://img.shields.io/badge/coverage-91%25-green)]()
 [![license](https://img.shields.io/badge/license-MIT-blue)]()
 
