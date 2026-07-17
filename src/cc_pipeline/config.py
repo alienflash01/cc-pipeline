@@ -224,7 +224,7 @@ def load_config(path: str) -> PipelineConfig:
         pipeline.append(step)
     
     # Parse modules
-    _KNOWN_MODULE_FIELDS = {"name", "spec_id", "source_dir", "source_files", "variables", "coverage", "file_order"}
+    _KNOWN_MODULE_FIELDS = {"name", "spec_id", "source_dir", "source_files", "variables", "file_order", "continue_on_error"}
     modules = []
     for mod_raw in raw["modules"]:
         # Warn on unknown module fields (catch typos like 'sorce_dir')
