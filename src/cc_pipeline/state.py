@@ -141,8 +141,33 @@ class StateManager:
             completed = mods[module_name].get("completed_steps", [])
             if key in completed:
                 completed.remove(key)
-            state["saved_at"] = datetime.now().isoformat()
-            self._atomic_write(state)
+                mods[module_name]["completed_steps"] = completed
+                self._atomic_write(state)
+
+    def clear_completed_for_file(self, module_name: str, loop_file: str) -> None:
+        """Remove ALL completed steps for a given loop_file.
+
+        Used when continue_on_error marks a file as failed —
+        downstream steps that depend on its output should be invalidated.
+        """
+        with self._lock:
+            if not self.state_file.exists():
+                return
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                return
+            mods = state.get("modules", {})
+            if module_name not in mods:
+                return
+            completed = mods[module_name].get("completed_steps", [])
+            # Remove any key ending with /loop_file
+            suffix = f"/{loop_file}"
+            new_completed = [k for k in completed if not k.endswith(suffix)]
+            if len(new_completed) != len(completed):
+                mods[module_name]["completed_steps"] = new_completed
+                self._atomic_write(state)
 
     def set_run_id(self, run_id: str) -> None:
         """Set run_id in state file (idempotent, thread-safe)."""

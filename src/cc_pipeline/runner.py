@@ -325,6 +325,12 @@ class ModuleRunner:
                         continue
                 # No on_failure (or exhausted) — module/step failed
                 if self._continue_on_error and step.loop_file:
+                    # Clear ALL completed steps for this file — downstream failure
+                    # means upstream output was insufficient, redo full pipeline
+                    if self.state_manager:
+                        self.state_manager.clear_completed_for_file(
+                            self.module_name, step.loop_file
+                        )
                     # Mark this file as failed, skip remaining steps for it
                     self._failed_files.add(step.loop_file)
                     ts = datetime.now().strftime("%H:%M:%S")
