@@ -504,10 +504,10 @@ def _cmd_run(args) -> int:
     print("=" * 60)
     for r in results:
         if r["status"] == "passed":
-            print(f"  ✓ {r['module']:20s}  {r['status']}")
+            print(f"  ✅ {r['module']:20s}  {r['status']}")
         else:
             reason = r.get("error") or r["status"]
-            print(f"  ✗ {r['module']:20s}  {r['status']} — {reason}")
+            print(f"  ❌ {r['module']:20s}  {r['status']} — {reason}")
             print(f"     💡 cc-pipeline transcript --run-dir {run_dir} --module {r['module']}")
     print("=" * 60)
     print(f"  {passed} passed, {failed} failed  (run_id: {orch.run_id})")
@@ -617,10 +617,10 @@ def _cmd_resume(args) -> int:
     for r in results:
         if r["status"] == "passed":
             extra = f"  {r.get('pr_url', '')}" if r.get("pr_url") else ""
-            print(f"  ✓ {r['module']:20s}  {r['status']}{extra}")
+            print(f"  ✅ {r['module']:20s}  {r['status']}{extra}")
         else:
             reason = r.get("error") or r["status"]
-            print(f"  ✗ {r['module']:20s}  {r['status']} — {reason}")
+            print(f"  ❌ {r['module']:20s}  {r['status']} — {reason}")
             print(f"     💡 cc-pipeline transcript --run-dir {run_dir} --module {r['module']}")
     print("=" * 60)
     print(f"  {passed} passed, {failed} failed")

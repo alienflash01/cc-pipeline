@@ -80,7 +80,7 @@ class Orchestrator:
             print(f"  ✅ {name:<8} passed  {detail}")
         else:
             reason = result.get("error") or result.get("reason") or status
-            print(f"  ✗ {name:<8} failed — {reason}")
+            print(f"  ❌ {name:<8} failed — {reason}")
 
     @property
     def shutdown_requested(self) -> bool:

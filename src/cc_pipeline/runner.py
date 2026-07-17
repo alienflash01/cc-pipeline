@@ -235,7 +235,7 @@ class ModuleRunner:
                             reason=failure_reason,
                         )
                         ts = datetime.now().strftime("%H:%M:%S")
-                        print(f"  [{ts}] {self._label('')} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {failure_reason}")
+                        print(f"  {self._label('')} {step.step_id} ↻ attempt {current_attempt+1}/{step.retry+1} — {failure_reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -268,7 +268,7 @@ class ModuleRunner:
                         )
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
-                            print(f"  [{ts}] {self._label('')} {step.step_id} ⚠️  RETRY (attempt {current_attempt}) — {pc_result.reason}")
+                            print(f"  {self._label('')} {step.step_id} ↻ attempt {current_attempt+1}/{step.retry+1} — {pc_result.reason}")
                         continue
                     else:
                         self.logger.log_fail(
@@ -549,9 +549,10 @@ class ModuleRunner:
         shell = step.postcondition.get("shell", "true")
         expect = step.postcondition.get("expect")
 
-        # Always print postcondition command (not just verbose)
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"  [{ts}] {self._label('')} postcondition: {shell[:100]}")
+        # Print postcondition command only on failure or -vv
+        if self.verbose >= 2:
+            ts = datetime.now().strftime("%H:%M:%S")
+            print(f"  [{ts}] {self._label('')} postcondition: {shell[:100]}")
 
         result = eval_postcondition(
             shell=shell,
