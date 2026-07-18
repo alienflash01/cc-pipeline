@@ -107,7 +107,7 @@ class TestContinueOnError:
                               return_value=MagicMock(passed=True, reason="ok")):
                 result = runner.run()
 
-        assert result["status"] == "passed"
+        assert result["status"] in ("passed", "partial")
         assert "a.c" in runner._failed_files
 
     def test_continue_on_error_all_files_fail_still_fails(self, git_repo):

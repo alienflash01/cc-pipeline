@@ -347,14 +347,14 @@ class ModuleRunner:
 
             step_idx += 1
 
-        # After loop: check if continue_on_error resulted in all files failing
-        if self._continue_on_error and self._failed_files and completed == 0:
+        # After loop: partial success (some files failed, some passed)
+        if self._continue_on_error and self._failed_files:
             return {
-                "status": "failed",
+                "status": "partial",
                 "module": self.module_name,
                 "steps_completed": completed,
                 "steps_total": total,
-                "error": f"No steps completed. Failed files: {sorted(self._failed_files)}",
+                "failed_files": sorted(self._failed_files),
             }
 
         return {

@@ -78,6 +78,10 @@ class Orchestrator:
             n_files = len(module.source_files) if module and module.source_files else 0
             detail = f"({steps} steps, {n_files} files)" if n_files else f"({steps} steps)"
             print(f"  ✅ {name:<8} passed  {detail}")
+        elif status == "partial":
+            failed = result.get("failed_files", [])
+            steps = result.get("steps_total", 0)
+            print(f"  ⚠️  {name:<8} partial ({len(failed)} of {steps} steps failed) — {', '.join(failed[:3])}")
         else:
             reason = result.get("error") or result.get("reason") or status
             print(f"  ❌ {name:<8} failed — {reason}")
