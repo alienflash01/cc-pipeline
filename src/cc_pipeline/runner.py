@@ -15,6 +15,7 @@ import time as _time_mod
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+import uuid
 from pathlib import Path
 
 from cc_pipeline.compiler import CompiledStep
@@ -168,6 +169,13 @@ class ModuleRunner:
                 continue
             passed = False
             failure_reason = ""
+            # CC session resume: manage session_id lifecycle
+            session_id = None
+            resume_session = False
+            if step.executor in ("claude-code", "judge") and self.state_manager:
+                session_id = self.state_manager.get_cc_session(
+                    self.module_name, step.step_id, step.loop_file or ""
+                )
 
             retry_budget = step.retry  # budget that CAN be consumed
             extra_retries = 0  # rate-limit retries (free, don't consume budget)
@@ -196,7 +204,15 @@ class ModuleRunner:
                         print(f"  [{ts2}]   SHELL: {step.rendered_prompt}")
 
                 # Execute the step with layered error handling
-                exec_result = self._execute_step(step)
+                # First attempt: ensure session_id exists for CC executor
+                if step.executor in ("claude-code", "judge") and not session_id and self.state_manager:
+                    session_id = str(uuid.uuid4())
+                    self.state_manager.set_cc_session(
+                        self.module_name, step.step_id, step.loop_file or "", session_id
+                    )
+                exec_result = self._execute_step(
+                    step, session_id=session_id, resume_session=resume_session
+                )
 
                 # Layer 1: Rate limit → free retry with backoff, limited count
                 if exec_result.outcome == ExecOutcome.RATE_LIMITED:
@@ -230,6 +246,20 @@ class ModuleRunner:
 
                     if retry_budget > 0:
                         retry_budget -= 1
+                        # CC session management
+                        if exec_result.outcome in (ExecOutcome.TIMEOUT, ExecOutcome.UNKNOWN_ERROR):
+                            resume_session = True
+                        else:
+                            if self.state_manager:
+                                self.state_manager.clear_cc_session(
+                                    self.module_name, step.step_id, step.loop_file or ""
+                                )
+                            session_id = str(uuid.uuid4())
+                            if self.state_manager:
+                                self.state_manager.set_cc_session(
+                                    self.module_name, step.step_id, step.loop_file or "", session_id
+                                )
+                            resume_session = False
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=failure_reason,
@@ -255,6 +285,11 @@ class ModuleRunner:
                     self._append_progress(step, "PASS", current_attempt)
                     completed = step_idx + 1
                     passed = True
+                    # Clear CC session on pass
+                    if self.state_manager:
+                        self.state_manager.clear_cc_session(
+                            self.module_name, step.step_id, step.loop_file or ""
+                        )
                     if self.verbose >= 1:
                         ts = datetime.now().strftime("%H:%M:%S")
                         print(f"  [{ts}] {self._label(step.loop_file or '')} {step.step_id} PASS")
@@ -262,6 +297,20 @@ class ModuleRunner:
                 else:
                     if retry_budget > 0:
                         retry_budget -= 1
+                        # CC session management
+                        if exec_result.outcome in (ExecOutcome.TIMEOUT, ExecOutcome.UNKNOWN_ERROR):
+                            resume_session = True
+                        else:
+                            if self.state_manager:
+                                self.state_manager.clear_cc_session(
+                                    self.module_name, step.step_id, step.loop_file or ""
+                                )
+                            session_id = str(uuid.uuid4())
+                            if self.state_manager:
+                                self.state_manager.set_cc_session(
+                                    self.module_name, step.step_id, step.loop_file or "", session_id
+                                )
+                            resume_session = False
                         self.logger.log_retry(
                             step=step.step_id, attempt=current_attempt,
                             reason=pc_result.reason,
@@ -422,7 +471,9 @@ class ModuleRunner:
         with open(progress_file, "a") as f:
             f.write(entry)
 
-    def _execute_step(self, step: CompiledStep) -> ExecResult:
+    def _execute_step(self, step: CompiledStep, *,
+                       session_id: str | None = None,
+                       resume_session: bool = False) -> ExecResult:
         """Execute a step using the appropriate executor.
 
         Returns ExecResult with classified outcome.
@@ -501,7 +552,8 @@ class ModuleRunner:
             cc_result = executor.run(
                 prompt=full_prompt,
                 cwd=self.worktree_path,
-                allowed_tools=allowed_tools,
+                session_id=session_id,
+                resume_session=resume_session,
                 timeout=step.timeout,
             )
         except subprocess.TimeoutExpired:

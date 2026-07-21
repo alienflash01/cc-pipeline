@@ -4,14 +4,12 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 
-
 @dataclass
 class CCResult:
     """Result of a Claude Code execution."""
     returncode: int
     stdout: str
     stderr: str
-
 
 class CCExecutor:
     """Wraps `claude -p` headless execution."""
@@ -25,36 +23,49 @@ class CCExecutor:
         self.model = model
         self.claude_path = claude_path
         self.default_timeout = default_timeout
-
     def run(
         self,
         prompt: str,
         cwd: str,
-        allowed_tools: list[str] | None = None,
+        *,
+        session_id: str | None = None,
+        allowed_tools: list | None = None,
+        resume_session: bool = False,
         timeout: int | None = None,
     ) -> CCResult:
-        """Run Claude Code in headless mode.
+        """Execute claude with optional session management.
 
         Args:
-            prompt: The instruction to send to Claude.
-            cwd: Working directory for the agent.
-            allowed_tools: List of allowed tool names (e.g. ["Read", "Write"]).
-            timeout: Timeout in seconds.
-
-        Returns:
-            CCResult with stdout, stderr, and return code.
+            prompt: Full resolved prompt.
+            cwd: Working directory.
+            session_id: UUID for CC session (None = no session).
+            resume_session: If True, use --resume instead of -p.
         """
-        cmd = [
-            self.claude_path,
-            "-p", prompt,
-            "--dangerously-skip-permissions",
-        ]
-
-        if self.model and self.model.strip():
-            cmd.extend(["--model", self.model])
-
-        if allowed_tools:
-            cmd.extend(["--allowedTools", ",".join(allowed_tools)])
+        if resume_session and session_id:
+            cmd = [
+                self.claude_path,
+                "--resume", session_id,
+                "-p", prompt,
+                "--print",
+                "--model", self.model,
+                "--dangerously-skip-permissions",
+            ]
+        elif session_id:
+            cmd = [
+                self.claude_path,
+                "-p", prompt,
+                "--session-id", session_id,
+                "--print",
+                "--model", self.model,
+                "--dangerously-skip-permissions",
+            ]
+        else:
+            cmd = [
+                self.claude_path,
+                "-p", prompt,
+                "--model", self.model,
+                "--dangerously-skip-permissions",
+            ]
 
         try:
             result = subprocess.run(
@@ -77,14 +88,12 @@ class CCExecutor:
             stderr=result.stderr,
         )
 
-
 @dataclass
 class ShellResult:
     """Result of a deterministic shell command execution."""
     returncode: int
     stdout: str
     stderr: str
-
 
 class ShellExecutor:
     """Wraps deterministic shell command execution (trusted layer)."""

@@ -142,6 +142,75 @@ class StateManager:
             if key in completed:
                 completed.remove(key)
                 mods[module_name]["completed_steps"] = completed
+                # Also clear cc_session for this step+file
+                cc = mods[module_name].get("cc_sessions", {})
+                step_cc = cc.get(step_id, {}) if isinstance(cc, dict) else {}
+                file_key = loop_file or ""
+                if file_key in step_cc:
+                    del step_cc[file_key]
+                    if step_cc:
+                        cc[step_id] = step_cc
+                    else:
+                        cc.pop(step_id, None)
+                    mods[module_name]["cc_sessions"] = cc
+                self._atomic_write(state)
+
+    def set_cc_session(self, module_name: str, step_id: str, loop_file: str, session_uuid: str) -> None:
+        """Store a CC session UUID for a specific step+file."""
+        import uuid as _uuid
+        _uuid.UUID(session_uuid)  # validate format
+        with self._lock:
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                state = {}
+            mods = state.setdefault("modules", {})
+            mod = mods.setdefault(module_name, {})
+            cc = mod.setdefault("cc_sessions", {})
+            step_cc = cc.setdefault(step_id, {})
+            step_cc[loop_file or ""] = session_uuid
+            state["saved_at"] = datetime.now().isoformat()
+            self._atomic_write(state)
+
+    def get_cc_session(self, module_name: str, step_id: str, loop_file: str) -> str | None:
+        """Get CC session UUID for a step+file, or None."""
+        with self._lock:
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                state = {}
+            if not state:
+                return None
+            mods = state.get("modules", {})
+            mod = mods.get(module_name, {})
+            cc = mod.get("cc_sessions", {})
+            step_cc = cc.get(step_id, {}) if isinstance(cc, dict) else {}
+            return step_cc.get(loop_file or "")
+
+    def clear_cc_session(self, module_name: str, step_id: str, loop_file: str) -> None:
+        """Remove CC session UUID for a step+file."""
+        with self._lock:
+            try:
+                with open(self.state_file) as f:
+                    state = json.load(f)
+            except (json.JSONDecodeError, ValueError):
+                state = {}
+            if not state:
+                return
+            mods = state.get("modules", {})
+            mod = mods.get(module_name, {})
+            cc = mod.get("cc_sessions", {})
+            step_cc = cc.get(step_id, {}) if isinstance(cc, dict) else {}
+            file_key = loop_file or ""
+            if file_key in step_cc:
+                del step_cc[file_key]
+                if step_cc:
+                    cc[step_id] = step_cc
+                else:
+                    cc.pop(step_id, None)
+                mod["cc_sessions"] = cc
                 self._atomic_write(state)
 
     def clear_completed_for_file(self, module_name: str, loop_file: str) -> None:
