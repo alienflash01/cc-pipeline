@@ -1,6 +1,6 @@
 # CC Session Resume 设计说明书
 
-> 版本：0.2 | 日期：2026-07-17 | 通过圆桌审查
+> 版本：0.3 | 日期：2026-07-17 | CC 审查修正
 
 ---
 
@@ -11,8 +11,6 @@
 | **超时/崩溃** (TIMEOUT, UNKNOWN_ERROR) | 任务未完成 | retry → 全新 CC 会话 | 浪费部分进度 |
 | **正常完成但失败** (exit≠0, postcondition fail) | 任务已完成 | retry → 全新 CC 会话 | **正确行为，不变** |
 
-**目标：超时/崩溃的 retry 复用 CC 会话上下文。**
-
 ---
 
 ## 二、CC CLI 验证
@@ -21,148 +19,149 @@
 |------|:---:|------|
 | `--session-id <uuid>` | ✅ | 必须 UUID 格式 |
 | `--resume <uuid>` | ✅ | 恢复指定会话 |
-| 输出 session ID | ❌ | 框架自己用 `uuid4()` 生成 |
+| `--resume <uuid> -p <prompt>` | ⚠️ 待验证 | 如果支持，可同时 resume 上下文 + 注入新 prompt |
 
 ---
 
-## 三、设计方案（圆桌修正版）
+## 三、设计修正（CC 审查后）
 
-### 3.1 核心原则
+### 3.1 P0-1 修正：Timeout 分类 bug
 
-1. **UUID 绑定到 step，持久化到 state.json**（cc-pipeline 崩溃也能恢复）
-2. **step_key 用 tuple：`(module, step_id, loop_file)`**（不拼字符串）
-3. **首次执行生成 UUID，每次超时/崩溃 retry 用同一个 UUID resume；只有"正常失败"才换新 UUID**
+**当前问题**：`CCExecutor.run()` 内部 catch `TimeoutExpired` 返回 `CCResult(returncode=-1)`，导致 runner 错误分类为 `CC_FAILED`。
 
-### 3.2 执行流程
+**修正**：`CCExecutor.run()` 不再 catch `TimeoutExpired`，让它向上抛。runner 层统一 catch 并分类为 `ExecOutcome.TIMEOUT`。
 
-```
-Step (module="auth", step_id="generate", loop_file="a.c") 首次：
-
-  读 state.json → 无 session → uuid4()
-  存 state.json: sessions["auth"]["generate"]["a.c"] = uuid
-  claude -p "prompt" --session-id <uuid>
-
-Step 执行结果：
-
-  ├── PASS
-  │     → 清 state.json 中的 session
-  │
-  ├── TIMEOUT / UNKNOWN_ERROR
-  │     → retry: claude --resume <uuid>  （复用 CC 上下文）
-  │     → 仍失败 → retry_budget 减少，继续
-  │
-  └── CC_FAILED (exit≠0)
-        → 清 state.json 中的 session
-        → retry: uuid4() → 新 session → 全新 CC 会话
-
-max_retries=3 混合场景：
-
-  尝试 1: TIMEOUT → --resume <uuid-A>
-  尝试 2: CC_FAILED → uuid4() → --session-id <uuid-B>
-  尝试 3: TIMEOUT → --resume <uuid-B>  （uuid-A 已清，uuid-B 是当前绑定的）
+```python
+# executor.py: 删除内部 try/except TimeoutExpired
+# runner.py: 已有 catch TimeoutExpired → TIMEOUT (但目前是死代码，修正后激活)
 ```
 
-### 3.3 state.json 格式
+### 3.2 P0-2 修正：resume 时传入 prompt
+
+`--resume <uuid> -p <prompt>` 组合传给 CC：恢复上下文 + 注入最新 prompt（含 context var）。
+
+```python
+if resume_session and session_id:
+    cmd = ["claude", "--resume", session_id, "-p", full_prompt, "--print", ...]
+else:
+    cmd = ["claude", "-p", full_prompt, "--session-id", session_id, "--print", ...]
+```
+
+### 3.3 P0-3 修正：session 管理位置
+
+正确位置：**`runner.run()` 的 retry 循环内部**，不是 `_execute_step`。
+
+```
+runner.run():
+  session_id = state_manager.get_cc_session(module, step_id, loop_file)
+  
+  while retry:
+      if first_attempt and not session_id:
+          session_id = uuid4()
+          state_manager.set_cc_session(module, step_id, loop_file, session_id)
+      
+      exec_result = _execute_step(step, session_id=session_id,
+                                   resume_session=(not first_attempt 
+                                   and outcome in (TIMEOUT, UNKNOWN_ERROR)))
+      
+      if exec_result.outcome == PASS:
+          state_manager.clear_cc_session(module, step_id, loop_file)
+          break
+      elif exec_result.outcome in (TIMEOUT, UNKNOWN_ERROR):
+          retry_budget -= 1
+          continue  # ← 用同一个 session_id resume
+      elif exec_result.outcome == CC_FAILED:
+          state_manager.clear_cc_session(module, step_id, loop_file)
+          session_id = uuid4()  # ← 换新 UUID
+          state_manager.set_cc_session(module, step_id, loop_file, session_id)
+          retry_budget -= 1
+          continue
+```
+
+### 3.4 P1-4 修正：on_failure 跳转清除 cc_sessions
+
+`StateManager.clear_step_completed()` 同步清除对应 `cc_sessions`。
+
+---
+
+## 四、CCExecutor 接口
+
+```python
+class CCExecutor:
+    def run(self, prompt: str, cwd: str, *,
+            session_id: str = None,
+            resume_session: bool = False) -> CCResult:
+        """Execute CC.
+
+        Args:
+            prompt: Full prompt (already resolved, context injected)
+            cwd: Working directory
+            session_id: UUID for CC session (None = no session)
+            resume_session: If True, use --resume instead of -p
+        """
+        if resume_session and session_id:
+            cmd = ["claude", "--resume", session_id,
+                   "-p", prompt, "--print",
+                   "--dangerously-skip-permissions"]
+        elif session_id:
+            cmd = ["claude", "-p", prompt,
+                   "--session-id", session_id, "--print",
+                   "--dangerously-skip-permissions", "--model", self.default_model]
+        else:
+            # 降级：无 session
+            cmd = ["claude", "-p", prompt, "--print",
+                   "--dangerously-skip-permissions", "--model", self.default_model]
+        
+        # 不 catch TimeoutExpired — 由 runner 层处理
+        result = subprocess.run(cmd, ...)
+        ...
+```
+
+---
+
+## 五、StateManager 新增方法
+
+```python
+def set_cc_session(self, module: str, step_id: str, loop_file: str, uuid: str)
+def get_cc_session(self, module: str, step_id: str, loop_file: str) -> str | None
+def clear_cc_session(self, module: str, step_id: str, loop_file: str)
+```
+
+### state.json 格式
 
 ```json
 {
   "modules": {
     "auth": {
-      "status": "running",
       "completed_steps": ["generate/a.c"],
       "cc_sessions": {
-        "generate": {
-          "a.c": "550e8400-e29b-41d4-a716-446655440000"
-        }
+        "generate": {"a.c": "550e8400-..."}
       }
     }
   }
 }
 ```
 
-**每个 step 最多 1 个活跃 UUID。PASS 后清除，失败后换新。**
-
-### 3.4 StateManager 新增方法
-
-```python
-def set_cc_session(self, module: str, step_id: str, loop_file: str, uuid: str) -> None
-def get_cc_session(self, module: str, step_id: str, loop_file: str) -> str | None
-def clear_cc_session(self, module: str, step_id: str, loop_file: str) -> None
-```
-
-### 3.5 CCExecutor 改动
-
-```python
-class CCExecutor:
-    def run(self, prompt, cwd, step_id="", loop_file="",
-            resume_session=False, session_id=None):
-        if resume_session and session_id:
-            cmd = ["claude", "--resume", session_id, "--print"]
-        elif session_id:
-            cmd = ["claude", "-p", prompt, "--session-id", session_id, "--print"]
-        else:
-            cmd = ["claude", "-p", prompt, "--print"]  # 降级：无 session
-```
-
-**不持有状态。session_id 由 runner 从 state.json 读取并传入。**
-
-### 3.6 runner.py 改动
-
-```python
-# _execute_step 重试逻辑：
-
-session_id = self.state_manager.get_cc_session(module, step_id, loop_file)
-
-if exec_result.outcome in (TIMEOUT, UNKNOWN_ERROR):
-    # 中断 → 不换 UUID，用同一个 resume
-    resume = True
-elif exec_result.outcome == CC_FAILED:
-    # 正常失败 → 清旧 UUID，生成新 UUID
-    self.state_manager.clear_cc_session(module, step_id, loop_file)
-    session_id = str(uuid.uuid4())
-    self.state_manager.set_cc_session(module, step_id, loop_file, session_id)
-    resume = False
-else:
-    # 首次执行 → 生成 UUID
-    session_id = str(uuid.uuid4())
-    self.state_manager.set_cc_session(module, step_id, loop_file, session_id)
-    resume = False
-
-exec_result = self.cc_executor.run(prompt, cwd, step_id, loop_file,
-                                    resume_session=resume, session_id=session_id)
-```
-
 ---
 
-## 四、边界条件
+## 六、边界条件
 
 | 场景 | 行为 |
 |------|------|
-| CC `--resume` 不可用 | 降级：正常 `-p` |
-| session 已过期 | CC 报错 → 清 session → 正常 `-p` 重试 |
-| cc-pipeline 崩溃重启 | state.json 有 UUID → resume 可用 |
+| `--resume` 不可用 | 降级：正常 `-p`（CC 不支持时） |
+| session 已过期 | CC 报错 → catch 非 0 → 清 UUID → 新 session |
+| on_failure 跳转 | `clear_step_completed` 同步清理 `cc_sessions` |
+| postcondition fail | 视为 CC_FAILED → 清 UUID → 新 session |
 | per_file：同 step 不同文件 | 各自独立 UUID（loop_file 不同） |
-| max_retries=0 | 不生成 session（无意义） |
-| postcondition fail | 视为"正常完成但失败"→ 换新 UUID |
+| Shell executor | session 管理全部 skip |
+| max_retries=0 | 不生成 session |
+| 并行执行 | 模块级并行，同 step 不会多线程冲突 |
 
 ---
 
-## 五、测试计划
+## 七、持久化策略
 
-| # | 测试 | 验证点 |
-|---|------|--------|
-| 1 | 首次执行 | cmd 含 `--session-id <uuid>` |
-| 2 | TIMEOUT retry | cmd 含 `--resume <same-uuid>` |
-| 3 | CC_FAILED retry | cmd 含 `--session-id <new-uuid>` |
-| 4 | PASS 后清 session | `get_cc_session()` → None |
-| 5 | 崩溃后恢复 | state.json 中有 UUID → resume 可用 |
-| 6 | per_file 独立 | a.c 和 b.c 不同 UUID |
-| 7 | --resume 不可用降级 | cmd 不含 `--resume`，走正常 `-p` |
-
----
-
-## 六、不改的
-
-- **不影响 postcondition retry。**
-- **不传 session_id 给用户层。**
-- **Shell executor 不受影响。**
+- UUID 通过 `StateManager` 写入 `state.json`（已有原子写入 + 锁）
+- cc-pipeline 崩溃重启后 → 读 `state.json` → UUID 仍存在 → resume 可用
+- CC 自身 session 由 CC 管理（磁盘存储）
+- 废弃 session 由 CC 自身清理（cc-pipeline 不管理）
