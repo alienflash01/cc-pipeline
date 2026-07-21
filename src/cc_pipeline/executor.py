@@ -68,12 +68,8 @@ class CCExecutor:
             # Ctrl+C: kill CC and its children
             print("  ⛔ Interrupted by user — killing CC process")
             raise
-        except subprocess.TimeoutExpired:
-            return CCResult(
-                returncode=-1,
-                stdout="",
-                stderr=f"Timeout after {timeout or self.default_timeout}s",
-            )
+        # TimeoutExpired intentionally NOT caught — let it bubble up
+        # to runner which classifies it as TIMEOUT (not CC_FAILED).
 
         return CCResult(
             returncode=result.returncode,
