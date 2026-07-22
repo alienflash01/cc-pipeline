@@ -1,0 +1,18 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw21_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: main
+    executor: shell
+    prompt: "echo ok > /tmp/pw-test/results/pw21.txt"
+    retry: 1
+    postcondition:
+      shell: "echo '{\"score\": 85}'"
+      expect: "$.score >= 80"
+modules:
+  - name: m1
+    source_dir: .
+    continue_on_error: true

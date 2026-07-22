@@ -1,0 +1,27 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw20_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+prompt_prefix: "GLOBAL"
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: rescue
+    executor: shell
+    prompt: "echo rescue > /dev/null"
+  - id: main
+    executor: shell
+    prompt: "echo ok > /tmp/pw-test/results/pw20.txt"
+    loop: per_file
+    on_failure: rescue
+    on_failure_max_jumps: 1
+    depends_on: rescue
+    postcondition:
+      shell: "echo ok"
+      expect: "true"
+    output: pw20_out.json
+modules:
+  - name: m1
+    source_dir: src
+    source_files: [a.c, b.c]
+    file_order: sequential

@@ -1,0 +1,21 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw06_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+pipeline:
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/valid.md
+    loop: per_file
+    retry: 1
+    timeout: 2
+    postcondition:
+      shell: "echo '{\"score\": 85}'"
+      expect: "$.score >= 80"
+    output: .pipeline/pw06.json
+modules:
+  - name: m1
+    source_dir: src
+    source_files: [a.c, b.c]
+    file_order: sequential
+    continue_on_error: true

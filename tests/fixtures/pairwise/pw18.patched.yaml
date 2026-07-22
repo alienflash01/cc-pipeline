@@ -1,0 +1,19 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw18_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+pipeline:
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/valid.md
+    loop: per_file
+    timeout: 2
+    postcondition:
+      shell: "echo PASS_OK"
+      expect: contains('PASS')
+    output: pw18_out.json
+modules:
+  - name: m1
+    source_dir: src
+    source_files: [a.c, b.c]
+    file_order: batched

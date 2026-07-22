@@ -1,0 +1,16 @@
+repo: /tmp/cc-pipeline-blackbox/fake-repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+prompt_prefix: "GLOBAL"
+pipeline:
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/nonexist.md
+    postcondition:
+      shell: "echo PASS_OK"
+      expect: contains('PASS')
+    output: .pipeline/pw01.json
+modules:
+  - name: m1
+    source_dir: .

@@ -1,0 +1,25 @@
+repo: /tmp/cc-pipeline-blackbox/fake-repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+pipeline:
+  - id: rescue
+    executor: shell
+    prompt: "echo rescue > /dev/null"
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/nonexist.md
+    loop: per_file
+    retry: 1
+    on_failure: rescue
+    on_failure_max_jumps: 1
+    depends_on: rescue
+    timeout: 2
+    postcondition:
+      shell: "echo ok"
+modules:
+  - name: m1
+    source_dir: src
+    source_files: ["*.c"]
+    file_order: batched
+    continue_on_error: true

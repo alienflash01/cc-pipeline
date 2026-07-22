@@ -1,0 +1,19 @@
+repo: /tmp/cc-pipeline-blackbox/fake-repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+prompt_prefix: "GLOBAL"
+pipeline:
+  - id: main
+    executor: shell
+    prompt: "echo ok > /tmp/pw-test/results/pw12.txt"
+    loop: per_file
+    timeout: 2
+    postcondition:
+      shell: "echo ok"
+      expect: "false"
+modules:
+  - name: m1
+    source_dir: src
+    source_files: [{path: a.c, assert_macro: CHECK}, {path: b.c, assert_macro: REQUIRE}]
+    file_order: sequential

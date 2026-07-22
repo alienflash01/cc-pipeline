@@ -1,0 +1,25 @@
+repo: /tmp/cc-pipeline-blackbox/fake-repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+prompt_prefix: "GLOBAL"
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: rescue
+    executor: shell
+    prompt: "echo rescue > /dev/null"
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/nonexist.md
+    on_failure: rescue
+    on_failure_max_jumps: 1
+    depends_on: rescue
+    timeout: 2
+    postcondition:
+      shell: "echo ok"
+      expect: "true"
+modules:
+  - name: m1
+    source_dir: .
+    continue_on_error: true

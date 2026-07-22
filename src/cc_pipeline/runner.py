@@ -552,6 +552,7 @@ class ModuleRunner:
             cc_result = executor.run(
                 prompt=full_prompt,
                 cwd=self.worktree_path,
+                allowed_tools=allowed_tools,
                 session_id=session_id,
                 resume_session=resume_session,
                 timeout=step.timeout,

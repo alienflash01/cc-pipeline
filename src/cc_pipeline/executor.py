@@ -47,8 +47,9 @@ class CCExecutor:
                 "--resume", session_id,
                 "-p", prompt,
                 "--print",
-                "--model", self.model,
+                *(["--model", self.model] if self.model else []),
                 "--dangerously-skip-permissions",
+                *(["--allowedTools", ",".join(allowed_tools)] if allowed_tools else []),
             ]
         elif session_id:
             cmd = [
@@ -56,15 +57,17 @@ class CCExecutor:
                 "-p", prompt,
                 "--session-id", session_id,
                 "--print",
-                "--model", self.model,
+                *(["--model", self.model] if self.model else []),
                 "--dangerously-skip-permissions",
+                *(["--allowedTools", ",".join(allowed_tools)] if allowed_tools else []),
             ]
         else:
             cmd = [
                 self.claude_path,
                 "-p", prompt,
-                "--model", self.model,
+                *(["--model", self.model] if self.model else []),
                 "--dangerously-skip-permissions",
+                *(["--allowedTools", ",".join(allowed_tools)] if allowed_tools else []),
             ]
 
         try:

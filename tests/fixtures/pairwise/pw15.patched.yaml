@@ -1,0 +1,27 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw15_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: rescue
+    executor: shell
+    prompt: "echo rescue > /dev/null"
+  - id: main
+    executor: shell
+    prompt: "echo ok > /tmp/pw-test/results/pw15.txt"
+    loop: per_file
+    retry: 1
+    on_failure: rescue
+    on_failure_max_jumps: 1
+    depends_on: rescue
+    postcondition:
+      shell: "echo ok"
+      expect: "true"
+    output: .pipeline/pw15.json
+modules:
+  - name: m1
+    source_dir: src
+    source_files: ["*.c"]
+    file_order: sequential

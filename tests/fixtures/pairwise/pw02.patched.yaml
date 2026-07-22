@@ -1,0 +1,18 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw02_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 0
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/nonexist.md
+    timeout: 2
+    postcondition:
+      shell: "echo ok"
+      expect: "false"
+    output: pw02_out.json
+modules:
+  - name: m1
+    source_dir: .

@@ -1,0 +1,23 @@
+repo: /tmp/cc-pipeline-blackbox/fake-repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+prompt_prefix: "GLOBAL"
+pipeline:
+  - id: rescue
+    executor: shell
+    prompt: "echo rescue > /dev/null"
+  - id: main
+    executor: shell
+    prompt_file: /tmp/pw-test/prompts/nonexist.md
+    retry: 1
+    on_failure: rescue
+    on_failure_max_jumps: 1
+    depends_on: rescue
+    postcondition:
+      shell: "echo '{\"score\": 85}'"
+      expect: "$.score >= 80"
+    output: pw13_out.json
+modules:
+  - name: m1
+    source_dir: .

@@ -1,0 +1,17 @@
+repo: /tmp/pytest-of-fanwei/pytest-91/test_pairwise_case_pw19_0/repo
+base_branch: main
+concurrency: 1
+max_retries: 1
+snippets:
+    hi: "echo hi"
+pipeline:
+  - id: main
+    executor: shell
+    prompt: "echo ok > /tmp/pw-test/results/pw19.txt"
+    retry: 1
+    postcondition:
+      shell: "echo ok"
+    output: pw19_out.json
+modules:
+  - name: m1
+    source_dir: .
