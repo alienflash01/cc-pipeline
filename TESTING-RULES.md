@@ -117,3 +117,52 @@ loop step：    step_id + loop_file
 □ 该功能假设 step_id 唯一吗？per_file 展开后是否还成立？
 □ compiled steps 可视化：展开后 step_id 是否唯一？不唯一时搜索逻辑是否正确？
 ```
+
+## 规则 9：状态清理对称性检查
+
+每个 `set` 操作必须有对应的 `clear` 操作，且 `clear` 必须覆盖所有状态字段。
+
+```python
+# ❌ 不对称 —— mark_step_completed 写了两处，clear_step_completed 只清了一处
+def mark_step_completed(step):
+    state.completed_steps.add(key)   # ← 写了
+    state.cc_sessions[key] = uuid    # ← 也写了
+
+def clear_step_completed(step):
+    state.completed_steps.remove(key)  # ← 清了
+    # cc_sessions 没清 ← BUG!
+
+# ✅ 对称
+def clear_step_completed(step):
+    state.completed_steps.remove(key)
+    del state.cc_sessions[key]  # ← 必须
+```
+
+### 对称性检查清单
+
+每次新增 state 字段时：
+
+```
+□ 新增了 set_X → 有没有对应的 clear_X？
+□ 新增了 mark_Y   → clear_Y / clear_step_completed 是否清除了 Y？
+□ 新增了 Store_Z   → clear_all_for_file 是否清除了 Z？
+```
+
+## 规则 10：新功能加入 Pairwise 参数矩阵
+
+`tests/unit/test_pairwise.py` 覆盖所有功能之间的 2-way 交互。新功能必须作为参数加入矩阵：
+
+| 曾漏测场景 | 原因 | 修复 |
+|-----------|------|------|
+| session × on_failure 跳转 | session 不在 pairwise 参数中 | 加 session 参数 |
+| session × retry | 同上 | 同上 |
+| session × continue_on_error | 同上 | 同上 |
+
+### 新功能加入步骤
+
+```
+1. 在 pairwise 参数 dict 中加一行
+2. 在 _build_steps 中实现新参数对应的 step 构建
+3. 跑 pytest tests/unit/test_pairwise.py -v
+4. 确认所有组合 PASS 或已知 SKIP
+```
