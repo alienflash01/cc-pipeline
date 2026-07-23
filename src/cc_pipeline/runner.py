@@ -368,6 +368,9 @@ class ModuleRunner:
                             f"步骤 '{step.step_id}' 使用你的输出后失败了。"
                         )
                         step_idx = target_idx
+                        # Reset session tracking — jump invalidates current session
+                        session_id = None
+                        resume_session = False
                         if self.verbose >= 1:
                             ts = datetime.now().strftime("%H:%M:%S")
                             print(f"  [{ts}] {self._label(step.loop_file or '')} ↩️  JUMP: {step.step_id} → {target} (jump {jump_counts[target_key]})")
