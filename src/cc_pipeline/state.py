@@ -139,20 +139,24 @@ class StateManager:
             if module_name not in mods:
                 return
             completed = mods[module_name].get("completed_steps", [])
+            changed = False
             if key in completed:
                 completed.remove(key)
                 mods[module_name]["completed_steps"] = completed
-                # Also clear cc_session for this step+file
-                cc = mods[module_name].get("cc_sessions", {})
-                step_cc = cc.get(step_id, {}) if isinstance(cc, dict) else {}
-                file_key = loop_file or ""
-                if file_key in step_cc:
-                    del step_cc[file_key]
-                    if step_cc:
-                        cc[step_id] = step_cc
-                    else:
-                        cc.pop(step_id, None)
-                    mods[module_name]["cc_sessions"] = cc
+                changed = True
+            # Always clear cc_session (even for failed steps — on_failure jump)
+            cc = mods[module_name].get("cc_sessions", {})
+            step_cc = cc.get(step_id, {}) if isinstance(cc, dict) else {}
+            file_key = loop_file or ""
+            if file_key in step_cc:
+                del step_cc[file_key]
+                if step_cc:
+                    cc[step_id] = step_cc
+                else:
+                    cc.pop(step_id, None)
+                mods[module_name]["cc_sessions"] = cc
+                changed = True
+            if changed:
                 self._atomic_write(state)
 
     def set_cc_session(self, module_name: str, step_id: str, loop_file: str, session_uuid: str) -> None:

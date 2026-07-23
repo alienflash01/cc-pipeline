@@ -194,3 +194,44 @@ class TestRunnerSessionRetry:
         # Two different UUIDs — new session each time
         assert len(uuids_seen) >= 2
         assert uuids_seen[0] != uuids_seen[1]
+
+
+# ═══ on_failure jump × session management ═══
+
+class TestOnFailureJumpSession:
+    def test_jump_resets_session_id(self, git_repo):
+        """on_failure jump → session_id reset → new UUID for target step."""
+        step = CompiledStep(step_id="eval", executor="claude-code",
+                           rendered_prompt="check", retry=0, output="out.json",
+                           on_failure="fixer")
+        step_fixer = CompiledStep(step_id="fixer", executor="shell",
+                                  rendered_prompt="echo fix", retry=0)
+        steps = [step_fixer, step]  # fixer first so eval can jump to it
+        runner = ModuleRunner(steps, "mod", str(git_repo), str(git_repo / "runs"))
+        from cc_pipeline.state import StateManager
+        sm = StateManager(run_dir=str(git_repo / "runs"))
+        sm.save("r1", {"mod": {"status": "running"}})
+        runner.state_manager = sm
+
+        uuids = []
+        modes = []
+        with patch("subprocess.run") as mock_run:
+            def se(cmd, **kw):
+                if isinstance(cmd, list) and cmd[0].endswith("claude"):
+                    if "--resume" in cmd:
+                        modes.append("resume")
+                    elif "--session-id" in cmd:
+                        modes.append("new")
+                        for i, a in enumerate(cmd):
+                            if a == "--session-id" and i+1 < len(cmd):
+                                uuids.append(cmd[i+1])
+                    return MagicMock(returncode=1, stdout="", stderr="fail")  # eval always fails
+                # shell executor: pass
+                return MagicMock(returncode=0, stdout="ok", stderr="")
+            mock_run.side_effect = se
+            runner.run()
+
+        # eval fails → on_failure → jump fixer → fixer passes → back to eval
+        # eval should NOT reuse old UUID — should get new UUID
+        assert len(uuids) >= 2, f"Expected 2+ UUIDs, got {uuids}"
+        assert uuids[0] != uuids[1], f"UUID reused after jump: {uuids}"
