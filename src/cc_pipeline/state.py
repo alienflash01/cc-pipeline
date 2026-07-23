@@ -238,8 +238,25 @@ class StateManager:
             # Remove any key ending with /loop_file
             suffix = f"/{loop_file}"
             new_completed = [k for k in completed if not k.endswith(suffix)]
-            if len(new_completed) != len(completed):
+            completed_changed = len(new_completed) != len(completed)
+            if completed_changed:
                 mods[module_name]["completed_steps"] = new_completed
+
+            # Also clear cc_sessions for all steps of this file
+            cc = mods[module_name].get("cc_sessions", {})
+            cc_changed = False
+            if isinstance(cc, dict):
+                for step_id in list(cc.keys()):
+                    step_cc = cc.get(step_id, {})
+                    if isinstance(step_cc, dict) and loop_file in step_cc:
+                        del step_cc[loop_file]
+                        cc_changed = True
+                    if isinstance(step_cc, dict) and not step_cc:
+                        cc.pop(step_id, None)
+                if cc_changed:
+                    mods[module_name]["cc_sessions"] = cc
+
+            if completed_changed or cc_changed:
                 self._atomic_write(state)
 
     def set_run_id(self, run_id: str) -> None:
